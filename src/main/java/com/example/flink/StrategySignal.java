@@ -1,9 +1,11 @@
 package com.example.flink;
 
+import java.io.Serializable;
+
 /**
  * Represents a trading strategy signal with buy/sell/hold decisions
  */
-public class StrategySignal {
+public class StrategySignal implements Serializable {
     public final String runId;
     public final String symbol;
     public final long timestamp;

@@ -4,11 +4,13 @@ import com.example.flink.*;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 
 public class NewTest {
 
@@ -19,10 +21,9 @@ public class NewTest {
         env.setParallelism(1);
 
         // 2. Create test data
-        List<IndicatorWithPrice> testData = List.of(
-                new IndicatorWithPrice("BTCUSD", 1000L, 50000, 51000.0, 49000.0, 5.0),
-                new IndicatorWithPrice("BTCUSD", 1001L, 51000, 52000.0, 50000.0, 22.0) // sma5 > sma21 -> BUY
-        );
+        List<IndicatorWithPrice> testData = new ArrayList<IndicatorWithPrice>();
+        testData.add(new IndicatorWithPrice("BTCUSD", 1000L, 50000, 19.9, 21.0, 5.0));
+        testData.add(new IndicatorWithPrice("BTCUSD", 1001L, 51000, 22.0, 21.0, 22.0));
 
         // 3. Create source stream
         DataStreamSource<IndicatorWithPrice> source = env.fromCollection(testData);
