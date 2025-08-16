@@ -1,0 +1,114 @@
+services:
+  #begin Fluss cluster
+  coordinator-server:
+    image: fluss/fluss:0.7.0
+    command: coordinatorServer
+    ports:
+      - "9123:9123"
+    depends_on:
+      - zookeeper
+    environment:
+      - |
+        FLUSS_PROPERTIES=
+        zookeeper.address: zookeeper:2181
+        bind.listeners: FLUSS://coordinator-server:9123
+        remote.data.dir: /tmp/fluss/remote-data
+        datalake.format: paimon
+        datalake.paimon.metastore: filesystem
+        datalake.paimon.warehouse: /tmp/paimon
+    volumes:
+      - shared-tmpfs:/tmp/paimon
+  tablet-server:
+    image: fluss/fluss:0.7.0
+    command: tabletServer
+    depends_on:
+      - coordinator-server
+    environment:
+      - |
+        FLUSS_PROPERTIES=
+        zookeeper.address: zookeeper:2181
+        bind.listeners: FLUSS://tablet-server:9123
+        data.dir: /tmp/fluss/data
+        remote.data.dir: /tmp/fluss/remote-data
+        kv.snapshot.interval: 0s
+        datalake.format: paimon
+        datalake.paimon.metastore: filesystem
+        datalake.paimon.warehouse: /tmp/paimon
+    volumes:
+      - shared-tmpfs:/tmp/paimon
+  zookeeper:
+    restart: always
+    image: zookeeper:3.9.2
+  #end
+  #begin Flink cluster
+  jobmanager:
+    image: fluss/quickstart-flink:1.20-0.7.0
+    ports:
+      - "8081:8081"
+      - "8083:8083" # SQL Gateway
+    command: >
+      bash -c "
+
+      mkdir -p /opt/flink/lib && echo 'Downloading PostgreSQL JDBC driver v42.7.7...' && wget -P /opt/flink/lib/ https://jdbc.postgresql.org/download/postgresql-42.7.7.jar || { echo 'Failed to download PostgreSQL driver'; exit 1; } && echo 'Downloading Flink JDBC connector...' && wget -P /opt/flink/lib/ https://repo1.maven.org/maven2/org/apache/flink/flink-connector-jdbc/3.3.0-1.20/flink-connector-jdbc-3.3.0-1.20.jar || { echo 'Failed to download JDBC connector'; exit 1; } &&
+        # Copy our custom UDF JAR to Flink lib directory
+        if [ -f /opt/flink/data/flink-udf-1.0-SNAPSHOT.jar ]; then 
+          echo 'Copying custom UDF JAR to Flink lib directory...' && 
+          cp /opt/flink/data/flink-udf-1.0-SNAPSHOT.jar /opt/flink/lib/ && 
+          echo 'UDF JAR copied successfully'; 
+        else 
+          echo 'Warning: UDF JAR not found in data directory'; 
+        fi &&
+        # Create catalog store and checkpoints directories
+        mkdir -p /opt/flink/data/catalog-store &&
+        mkdir -p /opt/flink/data/checkpoints &&
+        # Start SQL Gateway
+      /opt/flink/bin/sql-gateway.sh start -Dsql-gateway.endpoint.rest.address=0.0.0.0 -Dsql-gateway.endpoint.rest.port=8083 && /docker-entrypoint.sh jobmanager "
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        jobmanager.memory.process.size: 2048m
+        jobmanager.memory.jvm-overhead.max: 512m
+        table.catalog-store.kind: file
+        table.catalog-store.file.path: file:///opt/flink/data/catalog-store/
+        execution.checkpointing.interval: 10s
+        state.backend: filesystem
+        state.checkpoints.dir: file:///opt/flink/data/checkpoints/
+    volumes:
+      - shared-tmpfs:/tmp/paimon
+      - ./data:/opt/flink/data # Mount data directory for JSON files
+  taskmanager:
+    image: fluss/quickstart-flink:1.20-0.7.0
+    depends_on:
+      - jobmanager
+    command: >
+      bash -c " mkdir -p /opt/flink/lib && echo 'Downloading PostgreSQL JDBC driver v42.7.7...' && wget -P /opt/flink/lib/ https://jdbc.postgresql.org/download/postgresql-42.7.7.jar || { echo 'Failed to download PostgreSQL driver'; exit 1; } && echo 'Downloading Flink JDBC connector...' && wget -P /opt/flink/lib/ https://repo1.maven.org/maven2/org/apache/flink/flink-connector-jdbc/3.3.0-1.20/flink-connector-jdbc-3.3.0-1.20.jar || { echo 'Failed to download JDBC connector'; exit 1; } &&
+        # Copy our custom UDF JAR to Flink lib directory
+        if [ -f /opt/flink/data/flink-udf-1.0-SNAPSHOT.jar ]; then 
+          echo 'Copying custom UDF JAR to Flink lib directory...' && 
+          cp /opt/flink/data/flink-udf-1.0-SNAPSHOT.jar /opt/flink/lib/ && 
+          echo 'UDF JAR copied successfully'; 
+        else 
+          echo 'Warning: UDF JAR not found in data directory'; 
+        fi && /docker-entrypoint.sh taskmanager "
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 10
+        taskmanager.memory.process.size: 4096m
+        taskmanager.memory.task.off-heap.size: 1024m
+        taskmanager.memory.framework.off-heap.size: 512m
+        taskmanager.memory.jvm-overhead.max: 1024m
+    volumes:
+      - ./data:/opt/flink/data # Mount data directory for JSON files
+      - shared-tmpfs:/tmp/paimon
+  #end
+
+volumes:
+  shared-tmpfs:
+    driver: local
+    driver_opts:
+      type: "tmpfs"
+      device: "tmpfs"
+  postgres-data:

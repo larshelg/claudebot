@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "flink-sql-gateway": {
+      "command": "node",
+      "args": [
+        "mcp/src/mcp_server.js"
+      ],
+      "env": {
+        "SQL_GATEWAY_API_BASE_URL": "http://localhost:8083"
+      }
+    }
+  }
+}

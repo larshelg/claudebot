@@ -1,0 +1,2 @@
+type: "fluss"
+bootstrap.servers: "coordinator-server:9123"
