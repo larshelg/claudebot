@@ -1,4 +1,4 @@
-package com.example.flink;
+package com.example.flink.indicator;
 
 import com.alibaba.fluss.flink.sink.FlussSink;
 import com.alibaba.fluss.flink.sink.serializer.RowDataSerializationSchema;
@@ -6,14 +6,14 @@ import com.alibaba.fluss.flink.source.FlussSource;
 import com.alibaba.fluss.flink.source.enumerator.initializer.OffsetsInitializer;
 import com.alibaba.fluss.flink.source.deserializer.RowDataDeserializationSchema;
 
+import com.example.flink.Candle;
+import com.example.flink.IndicatorRow;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.data.TimestampData;
-
-import java.sql.Timestamp;
 
 /**
  * Multi-indicator processing job that writes results to Fluss.

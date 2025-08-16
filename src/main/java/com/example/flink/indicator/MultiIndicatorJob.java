@@ -1,10 +1,11 @@
-package com.example.flink;
+package com.example.flink.indicator;
 
+import com.example.flink.Candle;
+import com.example.flink.IndicatorRow;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
 
-import java.time.Instant;
 import java.util.Random;
 
 /**

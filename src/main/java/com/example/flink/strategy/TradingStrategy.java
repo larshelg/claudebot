@@ -6,27 +6,21 @@ import com.example.flink.serializer.CandleFlexible;
 import com.example.flink.serializer.IndicatorRowFlexible;
 import org.apache.flink.streaming.api.datastream.DataStream;
 
+import java.io.Serializable;
 import java.util.List;
 
-public interface TradingStrategy {
-
-    /**
-     * Process a single joined row of indicator + candle.
-     * Used for ValueState-style strategies.
-     */
+public interface TradingStrategy extends Serializable {
+    // For old-style process (ValueState)
     StrategySignal process(IndicatorRowFlexible indicator, CandleFlexible candle);
 
-    /**
-     * Optional: Apply CEP if supported. Default is null.
-     */
-    default DataStream<StrategySignal> applyCEP(DataStream<IndicatorWithPrice> joinedStream) {
-        return null; // Not all strategies need CEP
+    // For CEP-based patterns
+    default boolean isCEP() { return false; }
+
+    default DataStream<StrategySignal> applyCEP(DataStream<IndicatorWithPrice> stream) {
+        throw new UnsupportedOperationException("CEP not implemented");
     }
 
-    /**
-     * Indicates whether this strategy uses CEP
-     */
-    default boolean isCEP() {
-        return false;
-    }
+    default boolean requiresState() {return false;}
+
+    String getName();
 }

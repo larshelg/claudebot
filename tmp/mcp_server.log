@@ -766,3 +766,5 @@ FROM candles_base;
 2025-08-16T13:10:20.403Z - INFO - Flink MCP Server running on stdio
 2025-08-16T17:54:21.304Z - INFO - Flink MCP Server Connecting to: http://localhost:8083
 2025-08-16T17:54:21.307Z - INFO - Flink MCP Server running on stdio
+2025-08-16T19:01:22.417Z - INFO - Flink MCP Server Connecting to: http://localhost:8083
+2025-08-16T19:01:22.421Z - INFO - Flink MCP Server running on stdio

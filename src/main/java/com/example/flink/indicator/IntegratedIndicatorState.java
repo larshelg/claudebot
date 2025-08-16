@@ -1,4 +1,7 @@
-package com.example.flink;
+package com.example.flink.indicator;
+
+import com.example.flink.HeavyIndicatorState;
+import com.example.flink.SimpleMovingAverage;
 
 import java.io.Serializable;
 import java.util.HashMap;

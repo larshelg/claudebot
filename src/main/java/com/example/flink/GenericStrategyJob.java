@@ -16,6 +16,7 @@ import org.apache.flink.util.Collector;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class GenericStrategyJob {
@@ -68,15 +69,32 @@ public class GenericStrategyJob {
                                 indicator.timestamp,
                                 candle.getClose(),
                                 indicator.indicators.get("sma5"),
-                                indicator.indicators.get("sma21")
+                                indicator.indicators.get("sma21"),
+                                indicator.indicators.getOrDefault("rsi", 0.0)
                         ));
                     }
                 });
 
         // 3. Detect Crossovers (ValueState)
-        DataStream<StrategySignal> signals = joinedStream
-                .keyBy(ip -> ip.symbol)
-                .process(new ValueStateCrossoverProcessFunction(strategy));
+        DataStream<StrategySignal> signals;
+        if (strategy.isCEP()) {
+            // CEP-based strategy
+            signals = strategy.applyCEP(joinedStream);
+        } else if (strategy.requiresState()) {
+            // ValueState-based crossover strategy
+            signals = joinedStream
+                    .keyBy(ip -> ip.symbol)
+                    .process(new ValueStateCrossoverProcessFunction(strategy));
+        } else {
+            // Simple per-event strategies (RSI, etc.)
+            signals = joinedStream
+                    .map(ip -> strategy.process(
+                            new IndicatorRowFlexible(ip.symbol, ip.timestamp,
+                                    Map.of("sma5", ip.sma5, "sma21", ip.sma21, "rsi", ip.rsi)),
+                            new CandleFlexible(ip.symbol, ip.timestamp, Map.of("close", ip.close), 0L)
+                    ))
+                    .filter(s -> s != null);
+        }
 
         // 4. Convert to RowData
         DataStream<RowData> signalRowData = signals.map(RowDataConverter::toRowData);

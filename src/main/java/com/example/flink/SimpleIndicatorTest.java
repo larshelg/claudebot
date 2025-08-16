@@ -1,6 +1,7 @@
 package com.example.flink;
 
-import java.time.Instant;
+import com.example.flink.indicator.IntegratedIndicatorState;
+import com.example.flink.indicator.MultiIndicatorProcess;
 
 /**
  * Simple test class to verify the indicator logic works correctly

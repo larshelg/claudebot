@@ -11,7 +11,7 @@ public class CrossoverStrategyJob {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
 
-        TradingStrategy strategy = new SimpleCrossoverStrategy();
+        TradingStrategy strategy = new SimpleCrossoverStrategy("mycross");
         GenericStrategyJob.run(env, strategy);
 
         env.execute("SMA Crossover Strategy");
