@@ -193,10 +193,51 @@ WHERE rsi14 > 70;  -- Overbought conditions
 - **Flink Web UI**: `http://localhost:8081`
 - **Flink SQL Gateway**: `http://localhost:8083`
 
+## Trading Strategies
+
+### Available Strategies
+
+#### 1. Simple Crossover Strategy
+Basic SMA crossover strategy detecting when SMA5 crosses above/below SMA21.
+
+#### 2. RSI Threshold Strategy  
+Simple RSI-based strategy that generates buy signals when RSI < oversold threshold and sell signals when RSI > overbought threshold.
+
+#### 3. CEP Crossover Strategy
+Complex Event Processing (CEP) based strategy that detects SMA5/SMA21 crossovers using pattern matching with relaxed contiguity.
+
+#### 4. RSI-SMA Crossover Strategy ✨ NEW
+Advanced CEP-based strategy combining RSI momentum with SMA trend confirmation:
+
+**BUY Signal Pattern:**
+1. RSI drops below 25 (oversold condition)
+2. Followed by SMA5 ≤ SMA21 (below or at trend line)  
+3. Followed by SMA5 > SMA21 (bullish crossover)
+4. Pattern must complete within 4 hours
+
+**SELL Signal Pattern:**
+1. RSI rises above 72 (overbought condition)
+2. Followed by Price ≥ SMA5 (above or at support)
+3. Followed by Price < SMA5 (bearish breakdown)
+4. Pattern must complete within 4 hours
+
+**Signal Strength Calculation:**
+- For BUY: Combines RSI oversold intensity + SMA spread magnitude
+- For SELL: Combines RSI overbought intensity + price-to-SMA5 distance
+
+**Usage:**
+```java
+RSISMACrossoverStrategy strategy = new RSISMACrossoverStrategy("RSI-SMA-CEP");
+DataStream<StrategySignal> signals = strategy.applyCEP(indicatorWithPriceStream);
+```
+
+The strategy includes comprehensive debug output via side streams for pattern match visibility and analysis.
+
 ## Next steps
 - Add EMA(20) and RSI(14) calculations
 - Parameterize symbols to process selected assets only
 - Integrate with a live strategy execution engine
+- Add more advanced CEP patterns (triple moving average, Bollinger Band breakouts)
 
 ## Dynamic indicators (KV framework)
 
@@ -229,3 +270,4 @@ Notes:
 
 
 docker compose exec jobmanager /opt/flink/bin/sql-client.sh -f /opt/flink/data/marketdata.sql
+SET 'execution.runtime-mode' = 'batch'

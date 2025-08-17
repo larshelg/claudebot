@@ -6,14 +6,16 @@ import java.io.Serializable;
  * Represents a trading strategy signal with buy/sell/hold decisions
  */
 public class StrategySignal implements Serializable {
-    public final String runId;
-    public final String symbol;
-    public final long timestamp;
-    public final double close;
-    public final double sma5;
-    public final double sma21;
-    public final String signal;
-    public final double signalStrength;
+    public  String runId;
+    public  String symbol;
+    public  long timestamp;
+    public  double close;
+    public  double sma5;
+    public  double sma21;
+    public  String signal;
+    public  double signalStrength;
+
+    public StrategySignal() {}
 
     public StrategySignal(String runId, String symbol, long timestamp, double close,
             double sma5, double sma21, String signal, double signalStrength) {

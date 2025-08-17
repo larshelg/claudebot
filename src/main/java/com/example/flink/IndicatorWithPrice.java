@@ -3,12 +3,15 @@ package com.example.flink;
 import java.io.Serializable;
 
 public class IndicatorWithPrice implements Serializable {
-    public final String symbol;
-    public final long timestamp;
-    public final double close;
-    public final Double sma5;
-    public final Double sma21;
-    public final Double rsi;
+    public  String symbol;
+    public  long timestamp;
+    public  double close;
+    public  Double sma5;
+    public  Double sma21;
+    public  Double rsi;
+
+
+    public IndicatorWithPrice() {}
 
     public IndicatorWithPrice(String symbol, long timestamp, double close, Double sma5, Double sma21, Double rsi) {
         this.symbol = symbol;

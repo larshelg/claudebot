@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS market_data_history (
   `close` DECIMAL(10,4),
   volume BIGINT,
   WATERMARK FOR `time` AS `time` - INTERVAL '5' SECOND
+  ) WITH (
+     'table.datalake.enabled' = 'true',
+     'table.datalake.freshness' = '30s'
 );
 
 -- Create indicators table as a primary key table for latest indicator values
@@ -54,7 +57,8 @@ CREATE TABLE IF NOT EXISTS indicators (
     WATERMARK FOR `time` AS `time` - INTERVAL '5' SECOND,
     PRIMARY KEY (symbol, `time`) NOT ENFORCED
 ) WITH (
-    'bucket.num' = '4'
+     'table.datalake.enabled' = 'true',
+     'table.datalake.freshness' = '30s'
 );
 
 CREATE TABLE IF NOT EXISTS fluss.strategy_signals (
@@ -66,6 +70,9 @@ CREATE TABLE IF NOT EXISTS fluss.strategy_signals (
   sma21 DECIMAL(18,8),
   signal STRING,
   signal_strength DECIMAL(5,2)
+) WITH (
+     'table.datalake.enabled' = 'true',
+     'table.datalake.freshness' = '30s'
 );
 
 -- Batch import historical data from file

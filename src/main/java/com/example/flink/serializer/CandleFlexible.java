@@ -5,10 +5,12 @@ import java.util.Map;
 
 public class CandleFlexible implements Serializable {
 
-    public final String symbol;
-    public final long timestamp;
-    public final Map<String, Double> fields; // e.g. open, high, low, close
-    public final Long volume;                // optional (nullable)
+    public  String symbol;
+    public  long timestamp;
+    public  Map<String, Double> fields; // e.g. open, high, low, close
+    public  Long volume;                // optional (nullable)
+
+    public CandleFlexible() {}
 
     public CandleFlexible(String symbol,
                           long timestamp,
