@@ -21,4 +21,17 @@ public class RowDataConverter {
 
         return row;
     }
+
+    public static StrategySignal fromRowData(RowData row) {
+        String runId = row.getString(0).toString();
+        String symbol = row.getString(1).toString();
+        long timestamp = row.getTimestamp(2, 3).getMillisecond();
+        double close = row.getDecimal(3, 10, 4).toBigDecimal().doubleValue();
+        double sma5 = row.getDecimal(4, 18, 8).toBigDecimal().doubleValue();
+        double sma21 = row.getDecimal(5, 18, 8).toBigDecimal().doubleValue();
+        String signal = row.getString(6).toString();
+        double signalStrength = row.getDecimal(7, 5, 2).toBigDecimal().doubleValue();
+
+        return new StrategySignal(runId, symbol, timestamp, close, sma5, sma21, signal, signalStrength);
+    }
 }
