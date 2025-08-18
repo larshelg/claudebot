@@ -812,3 +812,5 @@ FROM candles_base;
 2025-08-17T12:39:02.813Z - INFO - POST response status: 200
 2025-08-17T12:39:05.950Z - INFO - GET request to: http://localhost:8083/v3/sessions/7cccee17-d0e3-44eb-8249-bad78bd46278/operations/5aa525e9-5df8-4fb1-8451-8dc25e69879b/result/0
 2025-08-17T12:39:05.954Z - INFO - GET response status: 200
+2025-08-18T20:14:28.022Z - INFO - Flink MCP Server Connecting to: http://localhost:8083
+2025-08-18T20:14:28.025Z - INFO - Flink MCP Server running on stdio
