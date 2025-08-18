@@ -2,6 +2,7 @@ package com.example.flink.tradeengine;
 
 import org.apache.flink.api.common.state.*;
 import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.datastream.*;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
@@ -23,13 +24,19 @@ public class PortfolioAndRiskJob implements Serializable {
     private final DataStream<TradeSignal> tradeSignals;
     private final DataStream<ExecReport> execReports;
     private final DataStream<AccountPolicy> accountPolicies;
+    private final Sink<Position> positionSink;
+    private final Sink<Portfolio> portfolioSink;
+    private final Sink<RiskAlert> riskAlertSink;
 
     public PortfolioAndRiskJob(DataStream<TradeSignal> tradeSignals, DataStream<ExecReport> execReports) {
         this.tradeSignals = tradeSignals;
         this.execReports = execReports;
         this.accountPolicies = tradeSignals
-                .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", ts.ts))
+                .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
                 .returns(AccountPolicy.class);
+        this.positionSink = null;
+        this.portfolioSink = null;
+        this.riskAlertSink = null;
     }
 
     public PortfolioAndRiskJob(DataStream<TradeSignal> tradeSignals,
@@ -38,6 +45,38 @@ public class PortfolioAndRiskJob implements Serializable {
         this.tradeSignals = tradeSignals;
         this.execReports = execReports;
         this.accountPolicies = accountPolicies;
+        this.positionSink = null;
+        this.portfolioSink = null;
+        this.riskAlertSink = null;
+    }
+
+    public PortfolioAndRiskJob(DataStream<TradeSignal> tradeSignals,
+            DataStream<ExecReport> execReports,
+            Sink<Position> positionSink,
+            Sink<Portfolio> portfolioSink,
+            Sink<RiskAlert> riskAlertSink) {
+        this.tradeSignals = tradeSignals;
+        this.execReports = execReports;
+        this.accountPolicies = tradeSignals
+                .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
+                .returns(AccountPolicy.class);
+        this.positionSink = positionSink;
+        this.portfolioSink = portfolioSink;
+        this.riskAlertSink = riskAlertSink;
+    }
+
+    public PortfolioAndRiskJob(DataStream<TradeSignal> tradeSignals,
+            DataStream<ExecReport> execReports,
+            DataStream<AccountPolicy> accountPolicies,
+            Sink<Position> positionSink,
+            Sink<Portfolio> portfolioSink,
+            Sink<RiskAlert> riskAlertSink) {
+        this.tradeSignals = tradeSignals;
+        this.execReports = execReports;
+        this.accountPolicies = accountPolicies;
+        this.positionSink = positionSink;
+        this.portfolioSink = portfolioSink;
+        this.riskAlertSink = riskAlertSink;
     }
 
     public void run() throws Exception {
@@ -57,16 +96,34 @@ public class PortfolioAndRiskJob implements Serializable {
 
         DataStream<Portfolio> portfolios = positions
                 .keyBy(p -> p.accountId)
+                .connect(accountPolicies.keyBy(p -> p.accountId))
                 .process(new PortfolioUpdater());
 
         DataStream<RiskAlert> riskAlerts = portfolios
                 .process(new RiskEngine());
 
+        // Use sinks if provided, otherwise fall back to printing
+        if (positionSink != null) {
+            positions.sinkTo(positionSink);
+        } else {
+            positions.print("POS");
+        }
+        
+        if (portfolioSink != null) {
+            portfolios.sinkTo(portfolioSink);
+        } else {
+            portfolios.print("PF");
+        }
+        
+        if (riskAlertSink != null) {
+            riskAlerts.sinkTo(riskAlertSink);
+        } else {
+            riskAlerts.print("RISK");
+        }
+        
+        // Always print accepted orders and exec reports for debugging
         acceptedOrders.print("ACCEPTED");
         simulatedExecReports.print("EXEC");
-        positions.print("POS");
-        portfolios.print("PF");
-        riskAlerts.print("RISK");
     }
 
 }

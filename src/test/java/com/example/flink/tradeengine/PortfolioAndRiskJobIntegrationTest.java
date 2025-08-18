@@ -224,8 +224,9 @@ public class PortfolioAndRiskJobIntegrationTest {
         var tradeSignalStream = createTradeSignalStream(env, tradeSignals);
         var execReportStream = createExecReportStream(env, execReports);
 
-        // Create custom job with test sinks
-        var job = new PortfolioAndRiskJobWithTestSinks(tradeSignalStream, execReportStream);
+        // Create job with test sinks
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, 
+                new TestPositionSink(), new TestPortfolioSink(), new TestRiskAlertSink());
         job.run();
 
         // Execute
@@ -275,7 +276,8 @@ public class PortfolioAndRiskJobIntegrationTest {
         var tradeSignalStream = createTradeSignalStream(env, tradeSignals);
         var execReportStream = createExecReportStream(env, execReports);
 
-        var job = new PortfolioAndRiskJobWithTestSinks(tradeSignalStream, execReportStream);
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, 
+                new TestPositionSink(), new TestPortfolioSink(), new TestRiskAlertSink());
         job.run();
 
         env.execute("Open Trades Limit Test");
@@ -321,7 +323,8 @@ public class PortfolioAndRiskJobIntegrationTest {
         var execReportStream = createExecReportStream(env, execReports);
 
         // Create job
-        var job = new PortfolioAndRiskJobWithTestSinks(tradeSignalStream, execReportStream);
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, 
+                new TestPositionSink(), new TestPortfolioSink(), new TestRiskAlertSink());
         job.run();
 
         // Execute
@@ -371,7 +374,8 @@ public class PortfolioAndRiskJobIntegrationTest {
         var execReportStream = createExecReportStream(env, execReports);
 
         // Create job
-        var job = new PortfolioAndRiskJobWithTestSinks(tradeSignalStream, execReportStream);
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, 
+                new TestPositionSink(), new TestPortfolioSink(), new TestRiskAlertSink());
         job.run();
 
         // Execute
@@ -417,7 +421,8 @@ public class PortfolioAndRiskJobIntegrationTest {
         var execReportStream = createExecReportStream(env, execReports);
 
         // Create job
-        var job = new PortfolioAndRiskJobWithTestSinks(tradeSignalStream, execReportStream);
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, 
+                new TestPositionSink(), new TestPortfolioSink(), new TestRiskAlertSink());
         job.run();
 
         // Execute
@@ -458,53 +463,147 @@ public class PortfolioAndRiskJobIntegrationTest {
                 "Account Isolation Test - Positions: " + positions.size() + ", Portfolios: " + portfolios.size());
     }
 
-    // Custom job class that uses test sinks instead of print statements
-    static class PortfolioAndRiskJobWithTestSinks {
-        private final DataStream<TradeSignal> tradeSignals;
-        private final DataStream<ExecReport> execReports;
+    @Test
+    public void testDynamicCapitalUpdates() throws Exception {
+        // Clear all test sinks
+        TestPositionSink.clear();
+        TestPortfolioSink.clear();
+        TestRiskAlertSink.clear();
 
-        public PortfolioAndRiskJobWithTestSinks(DataStream<TradeSignal> tradeSignals,
-                DataStream<ExecReport> execReports) {
-            this.tradeSignals = tradeSignals;
-            this.execReports = execReports;
-        }
+        // Create environment
+        var env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
 
-        public void run() throws Exception {
-            // === PRE-TRADE RISK CHECK ===
-            DataStream<AccountPolicy> policyStream = tradeSignals
-                    .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", ts.ts))
-                    .returns(AccountPolicy.class);
+        var baseTime = System.currentTimeMillis();
 
-            DataStream<TradeSignal> acceptedOrders = tradeSignals
-                    .keyBy(ts -> ts.accountId)
-                    .connect(policyStream.keyBy(p -> p.accountId))
-                    .process(new PreTradeRiskCheckWithPolicy());
+        // Create trade signals with controlled timing
+        var tradeSignals = Arrays.asList(
+                // First trade after initial capital
+                createTradeSignal("ACC_CAPITAL", "BTCUSD", 1.0, 50000.0, baseTime + 2000),
+                // Second trade after capital update  
+                createTradeSignal("ACC_CAPITAL", "ETHUSD", 10.0, 3000.0, baseTime + 4000)
+        );
 
-            // Simulate execution for accepted orders
-            DataStream<ExecReport> simulatedExecReports = acceptedOrders
-                    .map(new FakeFill());
+        // Create account policies with capital updates
+        var accountPolicies = Arrays.asList(
+                // Initial capital
+                new AccountPolicy("ACC_CAPITAL", 3, "ACTIVE", 100_000.0, baseTime + 1000),
+                // Capital withdrawal (simulate withdrawal to $50k)
+                new AccountPolicy("ACC_CAPITAL", 3, "ACTIVE", 50_000.0, baseTime + 3000)
+        );
 
-            // Combine external exec reports with simulated ones
-            DataStream<ExecReport> allExecReports = execReports.union(simulatedExecReports);
+        var execReports = Collections.<ExecReport>emptyList();
 
-            // === POSITION UPDATER ===
-            DataStream<Position> positions = allExecReports
-                    .keyBy(r -> r.accountId + "|" + r.symbol)
-                    .process(new PositionUpdater());
+        // Create streams with proper watermarks for event time processing
+        var tradeSignalStream = createTradeSignalStreamWithWatermarks(env, tradeSignals);
+        var accountPolicyStream = createAccountPolicyStreamWithWatermarks(env, accountPolicies);
+        var execReportStream = createExecReportStream(env, execReports);
 
-            // === PORTFOLIO UPDATER ===
-            DataStream<Portfolio> portfolios = positions
-                    .keyBy(p -> p.accountId)
-                    .process(new PortfolioUpdater());
+        // Create job with custom policy stream and test sinks
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, accountPolicyStream,
+                new TestPositionSink(), new TestPortfolioSink(), new TestRiskAlertSink());
+        job.run();
 
-            // === RISK ENGINE ===
-            DataStream<RiskAlert> riskAlerts = portfolios
-                    .process(new RiskEngine());
+        // Execute
+        env.execute("Dynamic Capital Updates Test");
 
-            // Use test sinks instead of print statements
-            positions.sinkTo(new TestPositionSink());
-            portfolios.sinkTo(new TestPortfolioSink());
-            riskAlerts.sinkTo(new TestRiskAlertSink());
-        }
+        // Validate portfolio updates show capital changes
+        var portfolios = TestPortfolioSink.getResults();
+        assertFalse(portfolios.isEmpty(), "Expected portfolio updates");
+
+        // Find portfolios for ACC_CAPITAL 
+        var accPortfolios = portfolios.stream()
+                .filter(pf -> "ACC_CAPITAL".equals(pf.accountId))
+                .toList();
+
+        assertTrue(accPortfolios.size() >= 4, "Expected at least 4 portfolio updates");
+
+        // Find specific portfolio states
+        var initialCapitalPortfolio = accPortfolios.stream()
+                .filter(pf -> pf.cashBalance == 100_000.0 && pf.exposure == 0.0)
+                .findFirst().orElse(null);
+        
+        var capitalWithdrawalPortfolio = accPortfolios.stream()
+                .filter(pf -> pf.cashBalance == 50_000.0 && pf.exposure == 0.0)
+                .findFirst().orElse(null);
+                
+        var firstTradePortfolio = accPortfolios.stream()
+                .filter(pf -> pf.cashBalance == 50_000.0 && pf.exposure == 50_000.0)
+                .findFirst().orElse(null);
+                
+        var secondTradePortfolio = accPortfolios.stream()
+                .filter(pf -> pf.cashBalance == 50_000.0 && pf.exposure == 80_000.0)
+                .findFirst().orElse(null);
+
+        // Verify initial capital setting
+        assertNotNull(initialCapitalPortfolio, "Should have initial capital portfolio");
+        assertEquals(100_000.0, initialCapitalPortfolio.cashBalance, 0.01);
+        assertEquals(0.0, initialCapitalPortfolio.exposure, 0.01);
+
+        // Verify capital withdrawal
+        assertNotNull(capitalWithdrawalPortfolio, "Should have capital withdrawal portfolio");
+        assertEquals(50_000.0, capitalWithdrawalPortfolio.cashBalance, 0.01);
+        assertEquals(0.0, capitalWithdrawalPortfolio.exposure, 0.01);
+
+        // Verify first trade uses updated capital
+        assertNotNull(firstTradePortfolio, "Should have first trade portfolio");
+        assertEquals(50_000.0, firstTradePortfolio.cashBalance, 0.01);
+        assertEquals(50_000.0, firstTradePortfolio.exposure, 0.01);
+
+        // Verify second trade builds on updated capital
+        assertNotNull(secondTradePortfolio, "Should have second trade portfolio");
+        assertEquals(50_000.0, secondTradePortfolio.cashBalance, 0.01);
+        assertEquals(80_000.0, secondTradePortfolio.exposure, 0.01);
+        assertEquals(130_000.0, secondTradePortfolio.equity, 0.01);
+
+        System.out.println("Dynamic Capital Test Results:");
+        System.out.println("Portfolio updates: " + accPortfolios.size());
+        System.out.println("All portfolios:");
+        accPortfolios.forEach(pf -> System.out.printf(
+                "Cash: $%.0f, Exposure: $%.0f, Equity: $%.0f%n", 
+                pf.cashBalance, pf.exposure, pf.equity));
+        
+        // Also check positions
+        var positions = TestPositionSink.getResults();
+        var accPositions = positions.stream()
+                .filter(pos -> "ACC_CAPITAL".equals(pos.accountId))
+                .toList();
+        System.out.println("Positions created: " + accPositions.size());
+        accPositions.forEach(pos -> System.out.printf(
+                "Symbol: %s, Qty: %.2f, Price: %.2f%n", 
+                pos.symbol, pos.netQty, pos.avgPrice));
     }
+
+    // Helper method to create AccountPolicy stream with watermarks
+    private static DataStream<AccountPolicy> createAccountPolicyStreamWithWatermarks(
+            StreamExecutionEnvironment env, List<AccountPolicy> data) {
+        DataStream<AccountPolicy> base;
+        if (data == null || data.isEmpty()) {
+            base = env.fromElements(new AccountPolicy("__empty__", 0, "ACTIVE", 0.0, 0L))
+                    .filter(e -> false);
+        } else {
+            base = env.fromCollection(data);
+        }
+        return base.assignTimestampsAndWatermarks(
+                WatermarkStrategy.<AccountPolicy>forBoundedOutOfOrderness(
+                        Duration.ofSeconds(1))
+                        .withTimestampAssigner((policy, ts) -> policy.ts));
+    }
+
+    // Helper method to create TradeSignal stream with watermarks
+    private static DataStream<TradeSignal> createTradeSignalStreamWithWatermarks(
+            StreamExecutionEnvironment env, List<TradeSignal> data) {
+        DataStream<TradeSignal> base;
+        if (data == null || data.isEmpty()) {
+            base = env.fromElements(new TradeSignal("__empty__", "__empty__", 0.0, 0.0, 0L))
+                    .filter(e -> false);
+        } else {
+            base = env.fromCollection(data);
+        }
+        return base.assignTimestampsAndWatermarks(
+                WatermarkStrategy.<TradeSignal>forBoundedOutOfOrderness(
+                        Duration.ofSeconds(1))
+                        .withTimestampAssigner((signal, ts) -> signal.ts));
+    }
+
 }

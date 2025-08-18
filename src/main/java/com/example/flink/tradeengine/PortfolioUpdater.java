@@ -6,13 +6,14 @@ import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
+import org.apache.flink.streaming.api.functions.co.KeyedCoProcessFunction;
 import org.apache.flink.util.Collector;
 
+import com.example.flink.domain.AccountPolicy;
 import com.example.flink.domain.Portfolio;
 import com.example.flink.domain.Position;
 
-public class PortfolioUpdater extends KeyedProcessFunction<String, Position, Portfolio> {
+public class PortfolioUpdater extends KeyedCoProcessFunction<String, Position, AccountPolicy, Portfolio> {
     private transient ValueState<Portfolio> portfolioState;
     private transient MapState<String, Double> symbolExposureState;
 
@@ -28,7 +29,7 @@ public class PortfolioUpdater extends KeyedProcessFunction<String, Position, Por
     }
 
     @Override
-    public void processElement(Position pos, Context ctx, Collector<Portfolio> out) throws Exception {
+    public void processElement1(Position pos, Context ctx, Collector<Portfolio> out) throws Exception {
         Portfolio pf = portfolioState.value();
         if (pf == null) {
             pf = new Portfolio(pos.accountId);
@@ -47,6 +48,24 @@ public class PortfolioUpdater extends KeyedProcessFunction<String, Position, Por
         pf.exposure = totalExposure;
         pf.equity = pf.cashBalance + pf.exposure;
 
+        portfolioState.update(pf);
+        out.collect(pf);
+    }
+
+    @Override
+    public void processElement2(AccountPolicy policy, Context ctx, Collector<Portfolio> out) throws Exception {
+        if (policy == null || policy.accountId == null)
+            return;
+            
+        Portfolio pf = portfolioState.value();
+        if (pf == null) {
+            pf = new Portfolio(policy.accountId);
+        }
+        
+        // Set initial capital from policy
+        pf.cashBalance = policy.initialCapital;
+        pf.equity = pf.cashBalance + pf.exposure;
+        
         portfolioState.update(pf);
         out.collect(pf);
     }
