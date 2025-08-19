@@ -653,22 +653,23 @@ public class PortfolioAndRiskJobIntegrationTest {
         assertEquals(80_000.0, secondTradePortfolio.exposure, 0.01);
         assertEquals(130_000.0, secondTradePortfolio.equity, 0.01);
 
-        System.out.println("Dynamic Capital Test Results:");
-        System.out.println("Portfolio updates: " + accPortfolios.size());
-        System.out.println("All portfolios:");
-        accPortfolios.forEach(pf -> System.out.printf(
-                "Cash: $%.0f, Exposure: $%.0f, Equity: $%.0f%n", 
-                pf.cashBalance, pf.exposure, pf.equity));
+        // Debug output removed to test for flakiness
+        // System.out.println("Dynamic Capital Test Results:");
+        // System.out.println("Portfolio updates: " + accPortfolios.size());
+        // System.out.println("All portfolios:");
+        // accPortfolios.forEach(pf -> System.out.printf(
+        //         "Cash: $%.0f, Exposure: $%.0f, Equity: $%.0f%n", 
+        //         pf.cashBalance, pf.exposure, pf.equity));
         
         // Also check positions
         var positions = TestPositionSink.getResults();
         var accPositions = positions.stream()
                 .filter(pos -> "ACC_CAPITAL".equals(pos.accountId))
                 .toList();
-        System.out.println("Positions created: " + accPositions.size());
-        accPositions.forEach(pos -> System.out.printf(
-                "Symbol: %s, Qty: %.2f, Price: %.2f%n", 
-                pos.symbol, pos.netQty, pos.avgPrice));
+        // System.out.println("Positions created: " + accPositions.size());
+        // accPositions.forEach(pos -> System.out.printf(
+        //         "Symbol: %s, Qty: %.2f, Price: %.2f%n", 
+        //         pos.symbol, pos.netQty, pos.avgPrice));
     }
 
     // Helper method to create AccountPolicy stream with watermarks

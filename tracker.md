@@ -230,87 +230,138 @@ Historical Data (Fluss):
 
 ---
 
-## 📈 Dashboard Queries
+## 📈 P&L Analytics Architecture
 
-### 1. Account Total P&L
+### Dual Query Strategy with Fluss Lakehouse
+
+**Real-time Queries (Hot Path):**
+- Query Fluss directly for live dashboard updates
+- Recent P&L, current positions, real-time alerts
+- Low latency, small time windows (last hour/day)
+
+**Analytics Queries (Cold Path):**
+- Query lakehouse layer for historical analysis
+- Aggregated reports, trend analysis, backtesting
+- High throughput, large time windows (weeks/months/years)
+
+### Real-time Dashboard Queries (Fluss)
+
+#### 1. Live Account P&L (Last 24 Hours)
 ```sql
+-- Real-time total P&L for live monitoring
+SELECT 
+    account_id,
+    SUM(realized_pnl) as today_realized_pnl,
+    COUNT(*) as today_trades,
+    SUM(CASE WHEN realized_pnl > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as today_win_rate
+FROM trade_matches 
+WHERE account_id = ? AND match_timestamp > UNIX_TIMESTAMP(NOW() - INTERVAL 1 DAY) * 1000
+GROUP BY account_id;
+```
+
+#### 2. Recent Trade Activity
+```sql
+-- Last 10 trades for real-time feed
+SELECT 
+    symbol, matched_qty, buy_price, sell_price, realized_pnl,
+    FROM_UNIXTIME(match_timestamp / 1000) as trade_time
+FROM trade_matches 
+WHERE account_id = ?
+ORDER BY match_timestamp DESC 
+LIMIT 10;
+```
+
+### Historical Analytics Queries (Lakehouse)
+
+#### 1. Account Total P&L (All Time)
+```sql
+-- Historical performance analysis
 SELECT 
     account_id,
     SUM(realized_pnl) as total_realized_pnl,
     COUNT(*) as total_trades,
-    SUM(CASE WHEN realized_pnl > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as win_rate
-FROM trade_matches 
+    AVG(realized_pnl) as avg_pnl_per_trade,
+    SUM(CASE WHEN realized_pnl > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as win_rate,
+    MAX(realized_pnl) as best_trade,
+    MIN(realized_pnl) as worst_trade
+FROM trade_matches_lakehouse 
 WHERE account_id = ?
 GROUP BY account_id;
 ```
 
-### 2. P&L by Symbol
+#### 2. P&L by Symbol (Historical)
 ```sql
+-- Symbol performance ranking
 SELECT 
     symbol,
     SUM(realized_pnl) as symbol_pnl,
     COUNT(*) as trade_count,
     AVG(realized_pnl) as avg_pnl_per_trade,
-    MAX(realized_pnl) as best_trade,
-    MIN(realized_pnl) as worst_trade
-FROM trade_matches 
+    STDDEV(realized_pnl) as pnl_volatility
+FROM trade_matches_lakehouse 
 WHERE account_id = ?
 GROUP BY symbol
 ORDER BY symbol_pnl DESC;
 ```
 
-### 3. P&L Over Time (Cumulative)
+#### 3. P&L Over Time (Daily Aggregation)
 ```sql
+-- Time series analysis for charting
 SELECT 
     DATE(FROM_UNIXTIME(match_timestamp / 1000)) as trade_date,
     SUM(realized_pnl) as daily_pnl,
+    COUNT(*) as daily_trades,
     SUM(SUM(realized_pnl)) OVER (
         ORDER BY DATE(FROM_UNIXTIME(match_timestamp / 1000))
+        ROWS UNBOUNDED PRECEDING
     ) as cumulative_pnl
-FROM trade_matches 
-WHERE account_id = ?
+FROM trade_matches_lakehouse 
+WHERE account_id = ? 
+  AND match_timestamp >= UNIX_TIMESTAMP(DATE_SUB(NOW(), INTERVAL 90 DAY)) * 1000
 GROUP BY DATE(FROM_UNIXTIME(match_timestamp / 1000))
 ORDER BY trade_date;
 ```
 
-### 4. Trade Detail Analysis
+#### 4. Advanced Analytics
 ```sql
+-- Monthly performance trends
 SELECT 
-    symbol,
-    buy_order_id,
-    sell_order_id,
-    matched_qty,
-    buy_price,
-    sell_price,
-    realized_pnl,
-    (sell_price - buy_price) / buy_price * 100 as pnl_percentage,
-    (sell_timestamp - buy_timestamp) / 1000 / 3600 as holding_hours,
-    FROM_UNIXTIME(buy_timestamp / 1000) as buy_time,
-    FROM_UNIXTIME(sell_timestamp / 1000) as sell_time
-FROM trade_matches 
-WHERE account_id = ? AND symbol = ?
-ORDER BY sell_timestamp DESC;
-```
+    YEAR(FROM_UNIXTIME(match_timestamp / 1000)) as year,
+    MONTH(FROM_UNIXTIME(match_timestamp / 1000)) as month,
+    SUM(realized_pnl) as monthly_pnl,
+    COUNT(*) as monthly_trades,
+    COUNT(DISTINCT symbol) as symbols_traded
+FROM trade_matches_lakehouse 
+WHERE account_id = ?
+GROUP BY YEAR(FROM_UNIXTIME(match_timestamp / 1000)), 
+         MONTH(FROM_UNIXTIME(match_timestamp / 1000))
+ORDER BY year DESC, month DESC;
 
-### 5. Performance Analytics
-```sql
--- Top performing symbols
-SELECT symbol, SUM(realized_pnl) as pnl 
-FROM trade_matches 
-WHERE account_id = ? 
-GROUP BY symbol 
-ORDER BY pnl DESC;
-
--- Trading activity by hour
+-- Trading activity heatmap
 SELECT 
+    DAYOFWEEK(FROM_UNIXTIME(match_timestamp / 1000)) as day_of_week,
     HOUR(FROM_UNIXTIME(match_timestamp / 1000)) as hour_of_day,
     COUNT(*) as trade_count,
     AVG(realized_pnl) as avg_pnl
-FROM trade_matches 
+FROM trade_matches_lakehouse 
 WHERE account_id = ?
-GROUP BY HOUR(FROM_UNIXTIME(match_timestamp / 1000))
-ORDER BY hour_of_day;
+GROUP BY DAYOFWEEK(FROM_UNIXTIME(match_timestamp / 1000)),
+         HOUR(FROM_UNIXTIME(match_timestamp / 1000))
+ORDER BY day_of_week, hour_of_day;
 ```
+
+### Query Performance Optimization
+
+**Fluss Layer (Real-time):**
+- Partition by `account_id` for fast filtering
+- Index on `match_timestamp` for time-based queries
+- Keep hot data (last 7-30 days) in memory
+
+**Lakehouse Layer (Analytics):**
+- Columnar storage (Parquet/Delta Lake)
+- Partition by date (`YYYY/MM/DD`) for time-based filtering
+- Pre-aggregated tables for common queries
+- Compression and bloom filters for better scan performance
 
 ---
 
