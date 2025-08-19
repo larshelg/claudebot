@@ -1,0 +1,43 @@
+{
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.compile.nullAnalysis.mode": "automatic",
+    "java.sources.organizeImports.starThreshold": 99,
+    "java.sources.organizeImports.staticStarThreshold": 99,
+    "java.format.settings.url": null,
+    "java.format.settings.profile": null,
+    "java.codeGeneration.insertionLocation": "afterCursor",
+    "java.maven.downloadSources": true,
+    "java.maven.downloadJavadoc": true,
+    "java.referencesCodeLens.enabled": true,
+    "java.implementationsCodeLens.enabled": true,
+    "java.signatureHelp.enabled": true,
+    "java.contentProvider.preferred": "fernflower",
+    "java.selectionRange.enabled": true,
+    "java.showBuildStatusBar": true,
+    "java.server.launchMode": "Standard",
+    "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx2G -Xms100m",
+    "java.home": null,
+    "java.import.maven.enabled": true,
+    "java.import.gradle.enabled": false,
+    "java.project.sourcePaths": [
+        "src/main/java",
+        "src/test/java"
+    ],
+    "java.project.outputPath": "target/classes",
+    "java.project.referencedLibraries": [
+        "lib/**/*.jar",
+        "target/dependency/*.jar"
+    ],
+    "java.debug.settings.enableRunDebugCodeLens": true,
+    "java.debug.settings.showHex": false,
+    "java.debug.settings.showStaticVariables": false,
+    "java.debug.settings.showQualifiedNames": false,
+    "java.debug.settings.maxStringLength": 0,
+    "files.exclude": {
+        "**/target": true,
+        "**/.classpath": true,
+        "**/.project": true,
+        "**/.settings": true,
+        "**/.factorypath": true
+    }
+}
