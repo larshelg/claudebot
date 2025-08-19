@@ -5,6 +5,7 @@ import com.example.flink.domain.ExecReport;
 import com.example.flink.domain.Portfolio;
 import com.example.flink.domain.Position;
 import com.example.flink.domain.RiskAlert;
+import com.example.flink.domain.TradeMatch;
 import com.example.flink.domain.TradeSignal;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.connector.sink2.Sink;
@@ -68,8 +69,7 @@ public class PortfolioAndRiskJobIntegrationTest {
             copy.symbol = pos.symbol;
             copy.netQty = pos.netQty;
             copy.avgPrice = pos.avgPrice;
-            copy.realizedPnl = pos.realizedPnl;
-            copy.unrealizedPnl = pos.unrealizedPnl;
+            copy.lastUpdated = pos.lastUpdated;
             return copy;
         }
     }
@@ -150,6 +150,103 @@ public class PortfolioAndRiskJobIntegrationTest {
             copy.accountId = alert.accountId;
             copy.message = alert.message;
             return copy;
+        }
+    }
+
+    // Test sink for ExecReport tracking
+    public static class TestExecReportSink implements Sink<ExecReport> {
+        private static final Queue<ExecReport> collectedExecReports = new ConcurrentLinkedQueue<>();
+
+        public static void clear() {
+            collectedExecReports.clear();
+        }
+
+        public static List<ExecReport> getResults() {
+            return new ArrayList<>(collectedExecReports);
+        }
+
+        @Override
+        public SinkWriter<ExecReport> createWriter(InitContext context) {
+            return new SinkWriter<ExecReport>() {
+                @Override
+                public void write(ExecReport element, Context context) {
+                    collectedExecReports.add(copyExecReport(element));
+                }
+
+                @Override
+                public void flush(boolean endOfInput) {
+                }
+
+                @Override
+                public void close() {
+                }
+            };
+        }
+
+        private ExecReport copyExecReport(ExecReport exec) {
+            return new ExecReport(exec.accountId, exec.orderId, exec.symbol, 
+                                 exec.fillQty, exec.fillPrice, exec.status, exec.ts);
+        }
+    }
+
+    // Test sink for TradeMatch tracking
+    public static class TestTradeMatchSink implements Sink<TradeMatch> {
+        private static final Queue<TradeMatch> collectedTradeMatches = new ConcurrentLinkedQueue<>();
+
+        public static void clear() {
+            collectedTradeMatches.clear();
+        }
+
+        public static List<TradeMatch> getResults() {
+            return new ArrayList<>(collectedTradeMatches);
+        }
+
+        @Override
+        public SinkWriter<TradeMatch> createWriter(InitContext context) {
+            return new SinkWriter<TradeMatch>() {
+                @Override
+                public void write(TradeMatch element, Context context) {
+                    collectedTradeMatches.add(copyTradeMatch(element));
+                }
+
+                @Override
+                public void flush(boolean endOfInput) {
+                }
+
+                @Override
+                public void close() {
+                }
+            };
+        }
+
+        private TradeMatch copyTradeMatch(TradeMatch match) {
+            TradeMatch copy = new TradeMatch();
+            copy.matchId = match.matchId;
+            copy.accountId = match.accountId;
+            copy.symbol = match.symbol;
+            copy.buyOrderId = match.buyOrderId;
+            copy.sellOrderId = match.sellOrderId;
+            copy.matchedQty = match.matchedQty;
+            copy.buyPrice = match.buyPrice;
+            copy.sellPrice = match.sellPrice;
+            copy.realizedPnl = match.realizedPnl;
+            copy.matchTimestamp = match.matchTimestamp;
+            copy.buyTimestamp = match.buyTimestamp;
+            copy.sellTimestamp = match.sellTimestamp;
+            return copy;
+        }
+    }
+
+    // Test implementation of TrackingSinkFactory
+    public static class TestTrackingSinkFactory implements TrackingSinkFactory {
+        @Override
+        public Sink<ExecReport> createExecReportSink() {
+            return new TestExecReportSink();
+        }
+
+        @Override
+        public Sink<TradeMatch> createTradeMatchSink() {
+            return new TestTradeMatchSink();
         }
     }
 
@@ -605,5 +702,94 @@ public class PortfolioAndRiskJobIntegrationTest {
                         Duration.ofSeconds(1))
                         .withTimestampAssigner((signal, ts) -> signal.ts));
     }
+
+    @Test
+    public void testExecReportTracking() throws Exception {
+        // Clear all test sinks
+        TestPositionSink.clear();
+        TestPortfolioSink.clear();
+        TestRiskAlertSink.clear();
+        TestExecReportSink.clear();
+
+        // Create environment
+        var env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        var baseTime = System.currentTimeMillis();
+
+        // Create trade signals that will generate simulated exec reports
+        var tradeSignals = Arrays.asList(
+                createTradeSignal("ACC_TRACK", "BTCUSD", 1.0, 50000.0, baseTime + 1000),
+                createTradeSignal("ACC_TRACK", "ETHUSD", 5.0, 3000.0, baseTime + 2000)
+        );
+
+        // Create real exec reports from broker
+        var execReports = Arrays.asList(
+                createExecReport("ACC_TRACK", "ORD001", "ADAUSD", 100.0, 1.5, "FILLED", baseTime + 3000),
+                createExecReport("ACC_TRACK", "ORD002", "DOTUSD", 50.0, 25.0, "FILLED", baseTime + 4000)
+        );
+
+        // Create streams
+        var tradeSignalStream = createTradeSignalStream(env, tradeSignals);
+        var execReportStream = createExecReportStream(env, execReports);
+
+        // Create job with tracking enabled - using 3-stream constructor with tracking
+        var accountPolicyStream = tradeSignalStream
+                .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
+                .returns(AccountPolicy.class);
+        
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, accountPolicyStream,
+                new TestPositionSink(), new TestPortfolioSink(), new TestRiskAlertSink(),
+                new TestTrackingSinkFactory());
+        job.run();
+
+        // Execute
+        env.execute("ExecReport Tracking Test");
+
+        // Validate ExecReport tracking
+        var trackedExecReports = TestExecReportSink.getResults();
+        assertFalse(trackedExecReports.isEmpty(), "Expected tracked exec reports");
+
+        // Should have both simulated exec reports (from trade signals) and real exec reports
+        var accTrackExecReports = trackedExecReports.stream()
+                .filter(exec -> "ACC_TRACK".equals(exec.accountId))
+                .toList();
+        
+        assertTrue(accTrackExecReports.size() >= 4, "Expected at least 4 exec reports (2 simulated + 2 real)");
+
+        // Verify we have exec reports for all expected symbols
+        var symbols = accTrackExecReports.stream()
+                .map(exec -> exec.symbol)
+                .collect(java.util.stream.Collectors.toSet());
+        
+        assertTrue(symbols.contains("BTCUSD"), "Should track BTCUSD exec report from trade signal");
+        assertTrue(symbols.contains("ETHUSD"), "Should track ETHUSD exec report from trade signal");
+        assertTrue(symbols.contains("ADAUSD"), "Should track ADAUSD exec report from broker");
+        assertTrue(symbols.contains("DOTUSD"), "Should track DOTUSD exec report from broker");
+
+        // Verify exec report details
+        var btcExecReport = accTrackExecReports.stream()
+                .filter(exec -> "BTCUSD".equals(exec.symbol))
+                .findFirst().orElse(null);
+        assertNotNull(btcExecReport, "Should have BTC exec report");
+        assertEquals(1.0, btcExecReport.fillQty, 0.001, "BTC fill quantity should match trade signal");
+        assertEquals(50000.0, btcExecReport.fillPrice, 0.01, "BTC fill price should match trade signal");
+        assertEquals("FILLED", btcExecReport.status, "Status should be FILLED");
+
+        var adaExecReport = accTrackExecReports.stream()
+                .filter(exec -> "ADAUSD".equals(exec.symbol))
+                .findFirst().orElse(null);
+        assertNotNull(adaExecReport, "Should have ADA exec report");
+        assertEquals(100.0, adaExecReport.fillQty, 0.001, "ADA fill quantity should match broker report");
+        assertEquals(1.5, adaExecReport.fillPrice, 0.01, "ADA fill price should match broker report");
+        assertEquals("FILLED", adaExecReport.status, "Status should be FILLED");
+
+        System.out.println("ExecReport Tracking Test Results:");
+        System.out.println("Total tracked exec reports: " + trackedExecReports.size());
+        accTrackExecReports.forEach(exec -> System.out.printf(
+                "Symbol: %s, OrderId: %s, Qty: %.2f, Price: %.2f, Status: %s%n", 
+                exec.symbol, exec.orderId, exec.fillQty, exec.fillPrice, exec.status));
+    }
+
 
 }

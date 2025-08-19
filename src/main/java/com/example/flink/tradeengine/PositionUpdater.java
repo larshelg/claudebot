@@ -32,6 +32,7 @@ public class PositionUpdater extends KeyedProcessFunction<String, ExecReport, Po
                 pos.avgPrice = ((pos.netQty * pos.avgPrice) + (report.fillQty * report.fillPrice)) / totalQty;
             }
             pos.netQty = totalQty;
+            pos.lastUpdated = report.ts; // Use execution timestamp
         }
 
         state.update(pos);

@@ -27,6 +27,7 @@ public class PortfolioAndRiskJob implements Serializable {
     private final Sink<Position> positionSink;
     private final Sink<Portfolio> portfolioSink;
     private final Sink<RiskAlert> riskAlertSink;
+    private final TrackingSinkFactory trackingSinkFactory;
 
     public PortfolioAndRiskJob(DataStream<TradeSignal> tradeSignals, DataStream<ExecReport> execReports) {
         this.tradeSignals = tradeSignals;
@@ -37,6 +38,7 @@ public class PortfolioAndRiskJob implements Serializable {
         this.positionSink = null;
         this.portfolioSink = null;
         this.riskAlertSink = null;
+        this.trackingSinkFactory = null;
     }
 
     public PortfolioAndRiskJob(DataStream<TradeSignal> tradeSignals,
@@ -48,6 +50,7 @@ public class PortfolioAndRiskJob implements Serializable {
         this.positionSink = null;
         this.portfolioSink = null;
         this.riskAlertSink = null;
+        this.trackingSinkFactory = null;
     }
 
     public PortfolioAndRiskJob(DataStream<TradeSignal> tradeSignals,
@@ -63,6 +66,7 @@ public class PortfolioAndRiskJob implements Serializable {
         this.positionSink = positionSink;
         this.portfolioSink = portfolioSink;
         this.riskAlertSink = riskAlertSink;
+        this.trackingSinkFactory = null;
     }
 
     public PortfolioAndRiskJob(DataStream<TradeSignal> tradeSignals,
@@ -77,6 +81,23 @@ public class PortfolioAndRiskJob implements Serializable {
         this.positionSink = positionSink;
         this.portfolioSink = portfolioSink;
         this.riskAlertSink = riskAlertSink;
+        this.trackingSinkFactory = null;
+    }
+
+    public PortfolioAndRiskJob(DataStream<TradeSignal> tradeSignals,
+            DataStream<ExecReport> execReports,
+            DataStream<AccountPolicy> accountPolicies,
+            Sink<Position> positionSink,
+            Sink<Portfolio> portfolioSink,
+            Sink<RiskAlert> riskAlertSink,
+            TrackingSinkFactory trackingSinkFactory) {
+        this.tradeSignals = tradeSignals;
+        this.execReports = execReports;
+        this.accountPolicies = accountPolicies;
+        this.positionSink = positionSink;
+        this.portfolioSink = portfolioSink;
+        this.riskAlertSink = riskAlertSink;
+        this.trackingSinkFactory = trackingSinkFactory;
     }
 
     public void run() throws Exception {
@@ -119,6 +140,11 @@ public class PortfolioAndRiskJob implements Serializable {
             riskAlerts.sinkTo(riskAlertSink);
         } else {
             riskAlerts.print("RISK");
+        }
+        
+        // Sink ExecReports to tracking system if enabled
+        if (trackingSinkFactory != null) {
+            allExecReports.sinkTo(trackingSinkFactory.createExecReportSink());
         }
         
         // Always print accepted orders and exec reports for debugging

@@ -5,8 +5,7 @@ public class Position {
     public String symbol;
     public double netQty;
     public double avgPrice;
-    public double realizedPnl;
-    public double unrealizedPnl;
+    public long lastUpdated; // Timestamp for Fluss logging
 
     public Position() {
     }
@@ -16,7 +15,6 @@ public class Position {
         this.symbol = symbol;
         this.netQty = 0.0;
         this.avgPrice = 0.0;
-        this.realizedPnl = 0.0;
-        this.unrealizedPnl = 0.0;
+        this.lastUpdated = System.currentTimeMillis();
     }
 }
