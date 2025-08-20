@@ -22,6 +22,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static com.example.flink.tradeengine.TestFlinkSinks.*;
+import static com.example.flink.tradeengine.TestStreamHelpers.*;
 
 @SuppressWarnings("deprecation")
 public class PortfolioAndRiskJobIntegrationTest {
@@ -33,265 +35,6 @@ public class PortfolioAndRiskJobIntegrationTest {
                     .setNumberTaskManagers(1)
                     .build());
 
-    // Test sink for Position updates
-    public static class TestPositionSink implements Sink<Position> {
-        private static final Queue<Position> collectedPositions = new ConcurrentLinkedQueue<>();
-
-        public static void clear() {
-            collectedPositions.clear();
-        }
-
-        public static List<Position> getResults() {
-            return new ArrayList<>(collectedPositions);
-        }
-
-        @Override
-        public SinkWriter<Position> createWriter(InitContext context) {
-            return new SinkWriter<Position>() {
-                @Override
-                public void write(Position element, Context context) {
-                    collectedPositions.add(copyPosition(element));
-                }
-
-                @Override
-                public void flush(boolean endOfInput) {
-                }
-
-                @Override
-                public void close() {
-                }
-            };
-        }
-
-        private Position copyPosition(Position pos) {
-            Position copy = new Position();
-            copy.accountId = pos.accountId;
-            copy.symbol = pos.symbol;
-            copy.netQty = pos.netQty;
-            copy.avgPrice = pos.avgPrice;
-            copy.lastUpdated = pos.lastUpdated;
-            return copy;
-        }
-    }
-
-    // Test sink for Portfolio updates
-    public static class TestPortfolioSink implements Sink<Portfolio> {
-        private static final Queue<Portfolio> collectedPortfolios = new ConcurrentLinkedQueue<>();
-
-        public static void clear() {
-            collectedPortfolios.clear();
-        }
-
-        public static List<Portfolio> getResults() {
-            return new ArrayList<>(collectedPortfolios);
-        }
-
-        @Override
-        public SinkWriter<Portfolio> createWriter(InitContext context) {
-            return new SinkWriter<Portfolio>() {
-                @Override
-                public void write(Portfolio element, Context context) {
-                    collectedPortfolios.add(copyPortfolio(element));
-                }
-
-                @Override
-                public void flush(boolean endOfInput) {
-                }
-
-                @Override
-                public void close() {
-                }
-            };
-        }
-
-        private Portfolio copyPortfolio(Portfolio pf) {
-            Portfolio copy = new Portfolio();
-            copy.accountId = pf.accountId;
-            copy.equity = pf.equity;
-            copy.cashBalance = pf.cashBalance;
-            copy.exposure = pf.exposure;
-            copy.marginUsed = pf.marginUsed;
-            return copy;
-        }
-    }
-
-    // Test sink for Risk alerts
-    public static class TestRiskAlertSink implements Sink<RiskAlert> {
-        private static final Queue<RiskAlert> collectedAlerts = new ConcurrentLinkedQueue<>();
-
-        public static void clear() {
-            collectedAlerts.clear();
-        }
-
-        public static List<RiskAlert> getResults() {
-            return new ArrayList<>(collectedAlerts);
-        }
-
-        @Override
-        public SinkWriter<RiskAlert> createWriter(InitContext context) {
-            return new SinkWriter<RiskAlert>() {
-                @Override
-                public void write(RiskAlert element, Context context) {
-                    collectedAlerts.add(copyRiskAlert(element));
-                }
-
-                @Override
-                public void flush(boolean endOfInput) {
-                }
-
-                @Override
-                public void close() {
-                }
-            };
-        }
-
-        private RiskAlert copyRiskAlert(RiskAlert alert) {
-            RiskAlert copy = new RiskAlert();
-            copy.accountId = alert.accountId;
-            copy.message = alert.message;
-            return copy;
-        }
-    }
-
-    // Test sink for ExecReport tracking
-    public static class TestExecReportSink implements Sink<ExecReport> {
-        private static final Queue<ExecReport> collectedExecReports = new ConcurrentLinkedQueue<>();
-
-        public static void clear() {
-            collectedExecReports.clear();
-        }
-
-        public static List<ExecReport> getResults() {
-            return new ArrayList<>(collectedExecReports);
-        }
-
-        @Override
-        public SinkWriter<ExecReport> createWriter(InitContext context) {
-            return new SinkWriter<ExecReport>() {
-                @Override
-                public void write(ExecReport element, Context context) {
-                    collectedExecReports.add(copyExecReport(element));
-                }
-
-                @Override
-                public void flush(boolean endOfInput) {
-                }
-
-                @Override
-                public void close() {
-                }
-            };
-        }
-
-        private ExecReport copyExecReport(ExecReport exec) {
-            return new ExecReport(exec.accountId, exec.orderId, exec.symbol,
-                    exec.fillQty, exec.fillPrice, exec.status, exec.ts);
-        }
-    }
-
-    // Test sink for TradeMatch tracking
-    public static class TestTradeMatchSink implements Sink<TradeMatch> {
-        private static final Queue<TradeMatch> collectedTradeMatches = new ConcurrentLinkedQueue<>();
-
-        public static void clear() {
-            collectedTradeMatches.clear();
-        }
-
-        public static List<TradeMatch> getResults() {
-            return new ArrayList<>(collectedTradeMatches);
-        }
-
-        @Override
-        public SinkWriter<TradeMatch> createWriter(InitContext context) {
-            return new SinkWriter<TradeMatch>() {
-                @Override
-                public void write(TradeMatch element, Context context) {
-                    collectedTradeMatches.add(copyTradeMatch(element));
-                }
-
-                @Override
-                public void flush(boolean endOfInput) {
-                }
-
-                @Override
-                public void close() {
-                }
-            };
-        }
-
-        private TradeMatch copyTradeMatch(TradeMatch match) {
-            TradeMatch copy = new TradeMatch();
-            copy.matchId = match.matchId;
-            copy.accountId = match.accountId;
-            copy.symbol = match.symbol;
-            copy.buyOrderId = match.buyOrderId;
-            copy.sellOrderId = match.sellOrderId;
-            copy.matchedQty = match.matchedQty;
-            copy.buyPrice = match.buyPrice;
-            copy.sellPrice = match.sellPrice;
-            copy.realizedPnl = match.realizedPnl;
-            copy.matchTimestamp = match.matchTimestamp;
-            copy.buyTimestamp = match.buyTimestamp;
-            copy.sellTimestamp = match.sellTimestamp;
-            return copy;
-        }
-    }
-
-    // Test implementation of TrackingSinkFactory
-    public static class TestTrackingSinkFactory implements TrackingSinkFactory {
-        @Override
-        public Sink<ExecReport> createExecReportSink() {
-            return new TestExecReportSink();
-        }
-
-        @Override
-        public Sink<TradeMatch> createTradeMatchSink() {
-            return new TestTradeMatchSink();
-        }
-    }
-
-    // Helper methods for creating test data
-    private static TradeSignal createTradeSignal(String accountId, String symbol, double qty,
-            double price,
-            long timestamp) {
-        return new TradeSignal(accountId, symbol, qty, price, timestamp);
-    }
-
-    private static ExecReport createExecReport(String accountId, String orderId, String symbol,
-            double fillQty, double fillPrice, String status, long timestamp) {
-        return new ExecReport(accountId, orderId, symbol, fillQty, fillPrice, status, timestamp);
-    }
-
-    private static DataStream<TradeSignal> createTradeSignalStream(StreamExecutionEnvironment env,
-            List<TradeSignal> data) {
-        DataStream<TradeSignal> base;
-        if (data == null || data.isEmpty()) {
-            base = env.fromElements(new TradeSignal("__empty__", "__empty__", 0.0, 0.0, 0L))
-                    .filter(e -> false);
-        } else {
-            base = env.fromCollection(data);
-        }
-        return base.assignTimestampsAndWatermarks(
-                WatermarkStrategy.<TradeSignal>forBoundedOutOfOrderness(
-                        Duration.ofSeconds(1))
-                        .withTimestampAssigner((e, ts) -> e.ts));
-    }
-
-    private static DataStream<ExecReport> createExecReportStream(StreamExecutionEnvironment env,
-            List<ExecReport> data) {
-        DataStream<ExecReport> base;
-        if (data == null || data.isEmpty()) {
-            base = env.fromElements(
-                    createExecReport("__empty__", "__empty__", "__empty__", 0.0, 0.0, "FILLED", 0L))
-                    .filter(e -> false);
-        } else {
-            base = env.fromCollection(data);
-        }
-        return base.assignTimestampsAndWatermarks(
-                WatermarkStrategy.<ExecReport>forBoundedOutOfOrderness(
-                        Duration.ofSeconds(1))
-                        .withTimestampAssigner((e, ts) -> e.ts));
-    }
 
     @Test
     public void testPositionUpdateFromExecutionReports() throws Exception {
@@ -890,6 +633,64 @@ public class PortfolioAndRiskJobIntegrationTest {
 
         // Validate position latest no longer contains the symbol
         assertNull(TestUpsertSinks.PositionLatestSink.get("ACC_CLOSE", "XYZ"), "Position should be removed on close");
+
+        // Validate a PositionClose history row was emitted
+        var closes = TestUpsertSinks.PositionCloseHistorySink.getResults();
+        assertFalse(closes.isEmpty(), "Expected a position close history row");
+        var close = closes.stream()
+                .filter(pc -> "ACC_CLOSE".equals(pc.accountId) && "XYZ".equals(pc.symbol))
+                .findFirst().orElse(null);
+        assertNotNull(close, "Expected close event for ACC_CLOSE/XYZ");
+    }
+
+    @Test
+    public void testTradeMatchHistoryContents() throws Exception {
+        TestTradeMatchSink.clear();
+
+        var env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        var baseTime = System.currentTimeMillis();
+
+        var tradeSignals = Collections.<TradeSignal>emptyList();
+        var execReports = Arrays.asList(
+                // Buy 1 @ 100
+                createExecReport("ACC_MATCH", "B1", "XYZ", 1.0, 100.0, "FILLED", baseTime + 1000),
+                // Sell 0.6 @ 110 -> P&L 0.6 * (110-100) = 6.0
+                createExecReport("ACC_MATCH", "S1", "XYZ", -0.6, 110.0, "FILLED", baseTime + 2000));
+
+        var tradeSignalStream = createTradeSignalStream(env, tradeSignals);
+        var execReportStream = createExecReportStream(env, execReports);
+
+        var accountPolicyStream = tradeSignalStream
+                .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
+                .returns(AccountPolicy.class);
+
+        var job = new PortfolioAndRiskJob(
+                tradeSignalStream,
+                execReportStream,
+                accountPolicyStream,
+                null, null, null,
+                null, // tracking factory
+                new TestTradeMatchSink(), // trade match history sink
+                null,
+                null,
+                null);
+
+        job.run();
+
+        env.execute("TradeMatch History Test");
+
+        var matches = TestTradeMatchSink.getResults();
+        assertFalse(matches.isEmpty(), "Expected trade match history rows");
+        var match = matches.stream()
+                .filter(m -> "ACC_MATCH".equals(m.accountId) && "XYZ".equals(m.symbol))
+                .findFirst().orElse(null);
+        assertNotNull(match, "Expected trade match for ACC_MATCH/XYZ");
+        assertEquals(0.6, match.matchedQty, 1e-6, "Matched qty should be 0.6");
+        assertEquals(100.0, match.buyPrice, 1e-6, "Buy price should be 100");
+        assertEquals(110.0, match.sellPrice, 1e-6, "Sell price should be 110");
+        assertEquals(6.0, match.realizedPnl, 1e-6, "Expected realized P&L of 6.0");
     }
 
 }
