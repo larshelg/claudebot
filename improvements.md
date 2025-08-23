@@ -1,3 +1,75 @@
+## Trading System Improvements
+
+This document captures an assessment of the current trading system and a prioritized list of improvements. It reflects the latest trade engine refactor (positions, portfolio, P&L, risk) and its integration posture with Fluss.
+
+### Overall assessment
+- Architecture: 8/10
+- Correctness: 7/10
+- Latency/throughput: 8/10
+- Resilience/ops: 6/10
+- Extensibility: 9/10
+
+### Current strengths
+- Clear separation: indicators/strategies persisted to Fluss; trade engine consumes.
+- Flink hot state for low-latency decisioning; Fluss for durability/history.
+- Full trade lifecycle implemented: accepted → exec → positions → portfolio → P&L (realized/unrealized) → alerts.
+- Latest vs. history modeling (upsert vs. append) validated with test sinks.
+- FIFO matcher + realized P&L aggregation + unrealized P&L from price ticks in place.
+- Dynamic `AccountPolicy` stream and keyed co-process for pre-trade checks.
+- Strong test coverage and modular operators.
+
+### Priority improvements
+1) Correctness and consistency
+   - Idempotence/dedup on `ExecReport` (orderId + sequence/hash) to avoid double counting.
+   - Track pending exposure (accepted-but-not-filled) in pre-trade checks.
+   - Formalize position/P&L conventions (crossing, avg price reset, shorting semantics) and encode tests.
+   - Watermarks/event-time alignment for exec/price; lateness/OOO configuration.
+
+2) Fluss integration
+   - Wire real sources/sinks to tables in `data/trading_storage.sql`.
+   - Upsert latest: `open_positions_latest`, `realized_pnl_latest`, `unrealized_pnl_latest`, `portfolio_latest`.
+   - Append history: `exec_report_history`, `trade_match_history`, `position_close_history`, `risk_alerts`.
+   - Ensure keys/PKs match job keys; define schema versioning and backfill/CDC story.
+
+3) State bootstrap and replay
+   - On startup, rehydrate hot state from Fluss latest tables; gate trade intake until bootstrap complete.
+   - Define replay policy so reprocessing exec history rebuilds latest deterministically and idempotently.
+
+4) Pre-trade policy depth
+   - Enrich `AccountPolicy` (per-symbol caps, notional/order caps, account status, margin constraints).
+   - Guarantee per-account serialization across the whole trade path; include pending orders in risk.
+
+5) Observability and SRE
+   - Metrics: open positions by key, unmatched lot queue depth, match rate, realized/unrealized totals, policy update lag.
+   - Alerts on anomalies: unmatched sells, negative cash, exposure spikes, late watermarks.
+   - Trace/IDs: propagate tradeId/orderId across logs and sinks.
+
+6) Performance and scaling
+   - Validate key distribution (accountId|symbol) for hotspots; consider compound partitioning if needed.
+   - Load tests with many accounts/symbols; verify sink throughput and operator latency under backpressure.
+
+7) Testing
+   - Golden tests for realized/unrealized under mixed long/short, crossing, partials.
+   - Fault-injection: duplicate execs, out-of-order fills, late prices, restart recovery.
+   - Property tests for matcher invariants (no negative unmatched after full close, conservation checks).
+
+8) Operational safety
+   - Kill-switch policy in RiskEngine (BLOCKED or margin breach halts acceptance immediately).
+   - DLQ for malformed/unknown events with re-ingest workflow.
+   - Data retention/compaction for history tables; tiering for long-term storage.
+
+### Medium-term enhancements
+- Use market data (not execs) as the source for unrealized P&L; make it switchable.
+- Portfolio equity semantics: cash ± realized P&L ± unrealized P&L ± margin/fees; document and implement consistently.
+- Strategy/trade attribution: persist `strategyId`/`runId` on orders and P&L for analytics.
+- Define latency budgets and SLAs; add end-to-end timing metrics.
+
+### Immediate next steps (test-first)
+- Implement ExecReport idempotence and add duplicate-fill tests.
+- Wire Fluss sinks for latest/history tables behind feature flags; keep test sinks in parallel.
+- Add bootstrap-from-Fluss path and an integration test that restarts mid-stream.
+- Extend metrics/logging and surface in monitoring for initial rollout.
+
 # Trading System Improvements
 
 This document outlines potential enhancements to our real-time trading risk management system.
@@ -96,7 +168,7 @@ public class AdvancedRiskEngine {
 // Order lifecycle: Signal → Order → Execution → Position
 public class Order {
     String orderId;
-    String accountId; 
+    String accountId;
     String symbol;
     double qty;
     double limitPrice;
@@ -138,7 +210,7 @@ public class OrderManager extends KeyedProcessFunction<String, TradeSignal, Orde
 // Strategy factory pattern
 public class StrategyEngine {
     private List<TradingStrategy> strategies = new ArrayList<>();
-    
+
     public StrategyEngine addStrategy(TradingStrategy strategy) {
         strategies.add(strategy);
         return this;
@@ -200,7 +272,7 @@ public class MarketDataConnector {
 ```java
 // Metrics collection
 - Trade execution latency
-- Risk check processing time  
+- Risk check processing time
 - Position update frequency
 - Portfolio calculation performance
 - Alert generation rates

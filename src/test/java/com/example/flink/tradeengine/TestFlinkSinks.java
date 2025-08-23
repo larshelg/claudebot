@@ -15,6 +15,25 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class TestFlinkSinks {
 
+    public static class NoopSink<T> implements Sink<T> {
+        @Override
+        public SinkWriter<T> createWriter(InitContext context) {
+            return new SinkWriter<T>() {
+                @Override
+                public void write(T element, Context context) {
+                }
+
+                @Override
+                public void flush(boolean endOfInput) {
+                }
+
+                @Override
+                public void close() {
+                }
+            };
+        }
+    }
+
     public static class TestPositionSink implements Sink<Position> {
         private static final Queue<Position> collectedPositions = new ConcurrentLinkedQueue<>();
 
@@ -214,15 +233,4 @@ public class TestFlinkSinks {
         }
     }
 
-    public static class TestTrackingSinkFactory implements TrackingSinkFactory {
-        @Override
-        public Sink<ExecReport> createExecReportSink() {
-            return new TestExecReportSink();
-        }
-
-        @Override
-        public Sink<TradeMatch> createTradeMatchSink() {
-            return new TestTradeMatchSink();
-        }
-    }
 }

@@ -23,6 +23,18 @@ CREATE TABLE IF NOT EXISTS fluss.exec_report_history (
   'table.datalake.freshness' = '30s'
 );
 
+-- Accepted trade signals (append-only)
+CREATE TABLE IF NOT EXISTS fluss.trade_signal_history (
+  accountId STRING,
+  symbol STRING,
+  qty DOUBLE,
+  price DOUBLE,
+  ts TIMESTAMP(3)
+) WITH (
+  'table.datalake.enabled' = 'true',
+  'table.datalake.freshness' = '30s'
+);
+
 -- FIFO matches with realized P&L
 CREATE TABLE IF NOT EXISTS fluss.trade_match_history (
   matchId STRING,

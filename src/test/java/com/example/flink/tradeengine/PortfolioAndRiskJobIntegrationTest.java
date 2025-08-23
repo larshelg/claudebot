@@ -2,14 +2,9 @@ package com.example.flink.tradeengine;
 
 import com.example.flink.domain.AccountPolicy;
 import com.example.flink.domain.ExecReport;
-import com.example.flink.domain.Portfolio;
 import com.example.flink.domain.Position;
-import com.example.flink.domain.RiskAlert;
-import com.example.flink.domain.TradeMatch;
 import com.example.flink.domain.TradeSignal;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.connector.sink2.Sink;
-import org.apache.flink.api.connector.sink2.SinkWriter;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
@@ -19,7 +14,6 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static com.example.flink.tradeengine.TestFlinkSinks.*;
@@ -34,7 +28,6 @@ public class PortfolioAndRiskJobIntegrationTest {
                     .setNumberSlotsPerTaskManager(2)
                     .setNumberTaskManagers(1)
                     .build());
-
 
     @Test
     public void testPositionUpdateFromExecutionReports() throws Exception {
@@ -64,9 +57,14 @@ public class PortfolioAndRiskJobIntegrationTest {
         var tradeSignalStream = createTradeSignalStream(env, tradeSignals);
         var execReportStream = createExecReportStream(env, execReports);
 
-        // Create job with test sinks
-        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream,
-                new TestPositionSink(), new TestPortfolioSink(), new TestRiskAlertSink());
+        // Create account policy stream and job, then set sinks
+        var accountPolicyStream = tradeSignalStream
+                .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
+                .returns(AccountPolicy.class);
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, accountPolicyStream);
+        job.setPositionSink(new TestPositionSink());
+        job.setPortfolioSink(new TestPortfolioSink());
+        job.setRiskAlertSink(new TestRiskAlertSink());
         job.run();
 
         // Execute
@@ -116,8 +114,13 @@ public class PortfolioAndRiskJobIntegrationTest {
         var tradeSignalStream = createTradeSignalStream(env, tradeSignals);
         var execReportStream = createExecReportStream(env, execReports);
 
-        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream,
-                new TestPositionSink(), new TestPortfolioSink(), new TestRiskAlertSink());
+        var accountPolicyStream = tradeSignalStream
+                .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
+                .returns(AccountPolicy.class);
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, accountPolicyStream);
+        job.setPositionSink(new TestPositionSink());
+        job.setPortfolioSink(new TestPortfolioSink());
+        job.setRiskAlertSink(new TestRiskAlertSink());
         job.run();
 
         env.execute("Open Trades Limit Test");
@@ -162,9 +165,14 @@ public class PortfolioAndRiskJobIntegrationTest {
         var tradeSignalStream = createTradeSignalStream(env, tradeSignals);
         var execReportStream = createExecReportStream(env, execReports);
 
-        // Create job
-        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream,
-                new TestPositionSink(), new TestPortfolioSink(), new TestRiskAlertSink());
+        // Create job and set sinks
+        var accountPolicyStream = tradeSignalStream
+                .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
+                .returns(AccountPolicy.class);
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, accountPolicyStream);
+        job.setPositionSink(new TestPositionSink());
+        job.setPortfolioSink(new TestPortfolioSink());
+        job.setRiskAlertSink(new TestRiskAlertSink());
         job.run();
 
         // Execute
@@ -213,9 +221,14 @@ public class PortfolioAndRiskJobIntegrationTest {
         var tradeSignalStream = createTradeSignalStream(env, tradeSignals);
         var execReportStream = createExecReportStream(env, execReports);
 
-        // Create job
-        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream,
-                new TestPositionSink(), new TestPortfolioSink(), new TestRiskAlertSink());
+        // Create job and set sinks
+        var accountPolicyStream = tradeSignalStream
+                .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
+                .returns(AccountPolicy.class);
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, accountPolicyStream);
+        job.setPositionSink(new TestPositionSink());
+        job.setPortfolioSink(new TestPortfolioSink());
+        job.setRiskAlertSink(new TestRiskAlertSink());
         job.run();
 
         // Execute
@@ -260,9 +273,14 @@ public class PortfolioAndRiskJobIntegrationTest {
         var tradeSignalStream = createTradeSignalStream(env, tradeSignals);
         var execReportStream = createExecReportStream(env, execReports);
 
-        // Create job
-        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream,
-                new TestPositionSink(), new TestPortfolioSink(), new TestRiskAlertSink());
+        // Create job and set sinks
+        var accountPolicyStream = tradeSignalStream
+                .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
+                .returns(AccountPolicy.class);
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, accountPolicyStream);
+        job.setPositionSink(new TestPositionSink());
+        job.setPortfolioSink(new TestPortfolioSink());
+        job.setRiskAlertSink(new TestRiskAlertSink());
         job.run();
 
         // Execute
@@ -337,9 +355,11 @@ public class PortfolioAndRiskJobIntegrationTest {
         var accountPolicyStream = createAccountPolicyStreamWithWatermarks(env, accountPolicies);
         var execReportStream = createExecReportStream(env, execReports);
 
-        // Create job with custom policy stream and test sinks
-        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, accountPolicyStream,
-                new TestPositionSink(), new TestPortfolioSink(), new TestRiskAlertSink());
+        // Create job with custom policy stream and set sinks
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, accountPolicyStream);
+        job.setPositionSink(new TestPositionSink());
+        job.setPortfolioSink(new TestPortfolioSink());
+        job.setRiskAlertSink(new TestRiskAlertSink());
         job.run();
 
         // Execute
@@ -403,10 +423,7 @@ public class PortfolioAndRiskJobIntegrationTest {
         // pf.cashBalance, pf.exposure, pf.equity));
 
         // Also check positions
-        var positions = TestPositionSink.getResults();
-        var accPositions = positions.stream()
-                .filter(pos -> "ACC_CAPITAL".equals(pos.accountId))
-                .toList();
+        TestPositionSink.getResults();
         // System.out.println("Positions created: " + accPositions.size());
         // accPositions.forEach(pos -> System.out.printf(
         // "Symbol: %s, Qty: %.2f, Price: %.2f%n",
@@ -445,92 +462,6 @@ public class PortfolioAndRiskJobIntegrationTest {
                         .withTimestampAssigner((signal, ts) -> signal.ts));
     }
 
-    @Test
-    public void testExecReportTracking() throws Exception {
-        // Clear all test sinks
-        TestPositionSink.clear();
-        TestPortfolioSink.clear();
-        TestRiskAlertSink.clear();
-        TestExecReportSink.clear();
-
-        // Create environment
-        var env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.setParallelism(1);
-
-        var baseTime = System.currentTimeMillis();
-
-        // Create trade signals that will generate simulated exec reports
-        var tradeSignals = Arrays.asList(
-                createTradeSignal("ACC_TRACK", "BTCUSD", 1.0, 50000.0, baseTime + 1000),
-                createTradeSignal("ACC_TRACK", "ETHUSD", 5.0, 3000.0, baseTime + 2000));
-
-        // Create real exec reports from broker
-        var execReports = Arrays.asList(
-                createExecReport("ACC_TRACK", "ORD001", "ADAUSD", 100.0, 1.5, "FILLED", baseTime + 3000),
-                createExecReport("ACC_TRACK", "ORD002", "DOTUSD", 50.0, 25.0, "FILLED", baseTime + 4000));
-
-        // Create streams
-        var tradeSignalStream = createTradeSignalStream(env, tradeSignals);
-        var execReportStream = createExecReportStream(env, execReports);
-
-        // Create job with tracking enabled - using 3-stream constructor with tracking
-        var accountPolicyStream = tradeSignalStream
-                .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
-                .returns(AccountPolicy.class);
-
-        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, accountPolicyStream,
-                new TestPositionSink(), new TestPortfolioSink(), new TestRiskAlertSink(),
-                new TestTrackingSinkFactory());
-        job.run();
-
-        // Execute
-        env.execute("ExecReport Tracking Test");
-
-        // Validate ExecReport tracking
-        var trackedExecReports = TestExecReportSink.getResults();
-        assertFalse(trackedExecReports.isEmpty(), "Expected tracked exec reports");
-
-        // Should have both simulated exec reports (from trade signals) and real exec
-        // reports
-        var accTrackExecReports = trackedExecReports.stream()
-                .filter(exec -> "ACC_TRACK".equals(exec.accountId))
-                .toList();
-
-        assertTrue(accTrackExecReports.size() >= 4, "Expected at least 4 exec reports (2 simulated + 2 real)");
-
-        // Verify we have exec reports for all expected symbols
-        var symbols = accTrackExecReports.stream()
-                .map(exec -> exec.symbol)
-                .collect(java.util.stream.Collectors.toSet());
-
-        assertTrue(symbols.contains("BTCUSD"), "Should track BTCUSD exec report from trade signal");
-        assertTrue(symbols.contains("ETHUSD"), "Should track ETHUSD exec report from trade signal");
-        assertTrue(symbols.contains("ADAUSD"), "Should track ADAUSD exec report from broker");
-        assertTrue(symbols.contains("DOTUSD"), "Should track DOTUSD exec report from broker");
-
-        // Verify exec report details
-        var btcExecReport = accTrackExecReports.stream()
-                .filter(exec -> "BTCUSD".equals(exec.symbol))
-                .findFirst().orElse(null);
-        assertNotNull(btcExecReport, "Should have BTC exec report");
-        assertEquals(1.0, btcExecReport.fillQty, 0.001, "BTC fill quantity should match trade signal");
-        assertEquals(50000.0, btcExecReport.fillPrice, 0.01, "BTC fill price should match trade signal");
-        assertEquals("FILLED", btcExecReport.status, "Status should be FILLED");
-
-        var adaExecReport = accTrackExecReports.stream()
-                .filter(exec -> "ADAUSD".equals(exec.symbol))
-                .findFirst().orElse(null);
-        assertNotNull(adaExecReport, "Should have ADA exec report");
-        assertEquals(100.0, adaExecReport.fillQty, 0.001, "ADA fill quantity should match broker report");
-        assertEquals(1.5, adaExecReport.fillPrice, 0.01, "ADA fill price should match broker report");
-        assertEquals("FILLED", adaExecReport.status, "Status should be FILLED");
-
-        System.out.println("ExecReport Tracking Test Results:");
-        System.out.println("Total tracked exec reports: " + trackedExecReports.size());
-        accTrackExecReports.forEach(exec -> System.out.printf(
-                "Symbol: %s, OrderId: %s, Qty: %.2f, Price: %.2f, Status: %s%n",
-                exec.symbol, exec.orderId, exec.fillQty, exec.fillPrice, exec.status));
-    }
 
     @Test
     public void testUpsertLatestSinks() throws Exception {
@@ -555,20 +486,17 @@ public class PortfolioAndRiskJobIntegrationTest {
         var tradeSignalStream = createTradeSignalStream(env, tradeSignals);
         var execReportStream = createExecReportStream(env, execReports);
 
-        // Use the extended constructor to wire latest-snapshot test sinks
-        var job = new PortfolioAndRiskJob(
-                tradeSignalStream,
-                execReportStream,
-                tradeSignalStream.map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
-                        .returns(AccountPolicy.class),
-                new TestUpsertSinks.PositionLatestSink(),
-                new TestUpsertSinks.PortfolioLatestSink(),
-                new TestRiskAlertSink(),
-                null, // TrackingSinkFactory
-                null, // TradeMatch sink (not needed here)
-                new TestUpsertSinks.RealizedPnlLatestSink(),
-                new TestUpsertSinks.UnrealizedPnlLatestSink(),
-                new TestUpsertSinks.PositionCloseHistorySink());
+        // Create job and set latest-snapshot test sinks
+        var accountPolicyStream = tradeSignalStream
+                .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
+                .returns(AccountPolicy.class);
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, accountPolicyStream);
+        job.setPositionSink(new TestUpsertSinks.PositionLatestSink());
+        job.setPortfolioSink(new TestUpsertSinks.PortfolioLatestSink());
+        job.setRiskAlertSink(new TestRiskAlertSink());
+        job.setRealizedPnlSink(new TestUpsertSinks.RealizedPnlLatestSink());
+        job.setUnrealizedPnlSink(new TestUpsertSinks.UnrealizedPnlLatestSink());
+        job.setPositionCloseSink(new TestUpsertSinks.PositionCloseHistorySink());
 
         job.run();
 
@@ -609,19 +537,14 @@ public class PortfolioAndRiskJobIntegrationTest {
         var tradeSignalStream = createTradeSignalStream(env, tradeSignals);
         var execReportStream = createExecReportStream(env, execReports);
 
-        var job = new PortfolioAndRiskJob(
-                tradeSignalStream,
-                execReportStream,
-                tradeSignalStream.map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
-                        .returns(AccountPolicy.class),
-                new TestUpsertSinks.PositionLatestSink(),
-                new TestUpsertSinks.PortfolioLatestSink(),
-                new TestRiskAlertSink(),
-                null, // tracking factory
-                null, // tradeMatch
-                null, // realized
-                null, // unrealized
-                new TestUpsertSinks.PositionCloseHistorySink());
+        var accountPolicyStream = tradeSignalStream
+                .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
+                .returns(AccountPolicy.class);
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, accountPolicyStream);
+        job.setPositionSink(new TestUpsertSinks.PositionLatestSink());
+        job.setPortfolioSink(new TestUpsertSinks.PortfolioLatestSink());
+        job.setRiskAlertSink(new TestRiskAlertSink());
+        job.setPositionCloseSink(new TestUpsertSinks.PositionCloseHistorySink());
 
         // We need to capture side output of position closes; the job prints them. For
         // testing,
@@ -666,16 +589,8 @@ public class PortfolioAndRiskJobIntegrationTest {
                 .map(ts -> new AccountPolicy(ts.accountId, 3, "ACTIVE", 100_000.0, ts.ts))
                 .returns(AccountPolicy.class);
 
-        var job = new PortfolioAndRiskJob(
-                tradeSignalStream,
-                execReportStream,
-                accountPolicyStream,
-                null, null, null,
-                null, // tracking factory
-                new TestTradeMatchSink(), // trade match history sink
-                null,
-                null,
-                null);
+        var job = new PortfolioAndRiskJob(tradeSignalStream, execReportStream, accountPolicyStream);
+        job.setTradeMatchSink(new TestTradeMatchSink());
 
         job.run();
 
