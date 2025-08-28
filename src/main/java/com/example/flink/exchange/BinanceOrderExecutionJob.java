@@ -1,4 +1,4 @@
-package com.example.flink.Exchange;
+package com.example.flink.exchange;
 
 import com.example.flink.tradeengine.PreTradeRiskCheckWithPolicy;
 import org.apache.flink.api.connector.sink2.Sink;

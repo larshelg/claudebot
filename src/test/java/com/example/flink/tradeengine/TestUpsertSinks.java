@@ -5,6 +5,7 @@ import com.example.flink.domain.Portfolio;
 import com.example.flink.domain.RealizedPnl;
 import com.example.flink.domain.UnrealizedPnl;
 import com.example.flink.domain.PositionClose;
+import com.example.flink.domain.TradeMatch;
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.api.connector.sink2.SinkWriter;
 
@@ -101,6 +102,54 @@ public class TestUpsertSinks {
         private PositionClose copy(PositionClose pc) {
             return new PositionClose(pc.accountId, pc.symbol, pc.totalQty, pc.avgPrice, pc.openTs, pc.closeTs,
                     pc.realizedPnl);
+        }
+    }
+
+    // Append sink for Trade Match events (history)
+    public static class TradeMatchHistorySink implements Sink<TradeMatch> {
+        private static final List<TradeMatch> history = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+        public static void clear() {
+            history.clear();
+        }
+
+        public static List<TradeMatch> getResults() {
+            return new ArrayList<>(history);
+        }
+
+        @Override
+        public SinkWriter<TradeMatch> createWriter(InitContext context) {
+            return new SinkWriter<TradeMatch>() {
+                @Override
+                public void write(TradeMatch element, Context context) {
+                    history.add(copy(element));
+                }
+
+                @Override
+                public void flush(boolean endOfInput) {
+                }
+
+                @Override
+                public void close() {
+                }
+            };
+        }
+
+        private TradeMatch copy(TradeMatch tm) {
+            TradeMatch copy = new TradeMatch();
+            copy.matchId = tm.matchId;
+            copy.accountId = tm.accountId;
+            copy.symbol = tm.symbol;
+            copy.buyOrderId = tm.buyOrderId;
+            copy.sellOrderId = tm.sellOrderId;
+            copy.matchedQty = tm.matchedQty;
+            copy.buyPrice = tm.buyPrice;
+            copy.sellPrice = tm.sellPrice;
+            copy.realizedPnl = tm.realizedPnl;
+            copy.matchTimestamp = tm.matchTimestamp;
+            copy.buyTimestamp = tm.buyTimestamp;
+            copy.sellTimestamp = tm.sellTimestamp;
+            return copy;
         }
     }
 

@@ -28,6 +28,36 @@ public class StrategyChooserJob implements Serializable {
     }
 
     public void run() throws Exception {
+        Results res = processStrategySignals(this.strategySignals, this.accountPolicies, this.positions,
+                this.tradeSignalSink == null ? null : new Sinks(this.tradeSignalSink));
+        this.acceptedOut = res.accepted;
+    }
+
+    public DataStream<TradeSignal> getAcceptedTradeSignals() {
+        return acceptedOut;
+    }
+
+    public static class Results {
+        public final DataStream<TradeSignal> accepted;
+
+        public Results(DataStream<TradeSignal> accepted) {
+            this.accepted = accepted;
+        }
+    }
+
+    public static class Sinks {
+        public final Sink<TradeSignal> tradeSignalSink;
+
+        public Sinks(Sink<TradeSignal> tradeSignalSink) {
+            this.tradeSignalSink = tradeSignalSink;
+        }
+    }
+
+    public static Results processStrategySignals(
+            DataStream<StrategySignal> strategySignals,
+            DataStream<AccountPolicy> accountPolicies,
+            DataStream<Position> positions,
+            Sinks sinksOrNull) {
         DataStream<TradeSignal> rawTradeSignals = strategySignals
                 .map(sig -> new TradeSignal(
                         sig.runId != null ? sig.runId : "ACC_DEFAULT",
@@ -50,15 +80,11 @@ public class StrategyChooserJob implements Serializable {
                 .connect(control.keyBy(c -> c.accountId))
                 .process(new PreTradeRiskCheckWithPositions());
 
-        this.acceptedOut = accepted;
-        if (tradeSignalSink != null) {
-            accepted.sinkTo(tradeSignalSink);
+        if (sinksOrNull != null && sinksOrNull.tradeSignalSink != null) {
+            accepted.sinkTo(sinksOrNull.tradeSignalSink);
         } else {
             accepted.print("TRADE_SIGNALS");
         }
-    }
-
-    public DataStream<TradeSignal> getAcceptedTradeSignals() {
-        return acceptedOut;
+        return new Results(accepted);
     }
 }

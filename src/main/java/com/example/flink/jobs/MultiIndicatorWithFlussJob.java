@@ -1,4 +1,4 @@
-package com.example.flink.indicator;
+package com.example.flink.jobs;
 
 import com.alibaba.fluss.flink.sink.FlussSink;
 import com.alibaba.fluss.flink.sink.serializer.RowDataSerializationSchema;
@@ -8,6 +8,7 @@ import com.alibaba.fluss.flink.source.deserializer.RowDataDeserializationSchema;
 
 import com.example.flink.Candle;
 import com.example.flink.IndicatorRow;
+import com.example.flink.indicator.MultiIndicatorProcess;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.data.GenericRowData;
@@ -17,7 +18,7 @@ import org.apache.flink.table.data.TimestampData;
 
 /**
  * Multi-indicator processing job that writes results to Fluss.
- * 
+ *
  * This version of the job:
  * 1. Generates sample BTC price data
  * 2. Processes it through the multi-indicator pipeline

@@ -1,9 +1,10 @@
-package com.example.flink;
+package com.example.flink.jobs;
 
 import com.alibaba.fluss.flink.sink.FlussSink;
 import com.alibaba.fluss.flink.sink.serializer.RowDataSerializationSchema;
 import com.alibaba.fluss.flink.source.FlussSource;
 import com.alibaba.fluss.flink.source.enumerator.initializer.OffsetsInitializer;
+import com.example.flink.GenericStrategyJob;
 import com.example.flink.serializer.*;
 import com.example.flink.strategy.SimpleCrossoverStrategy;
 import com.example.flink.strategy.TradingStrategy;
