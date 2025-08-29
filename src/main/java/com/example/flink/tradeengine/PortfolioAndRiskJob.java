@@ -110,7 +110,73 @@ public class PortfolioAndRiskJob implements Serializable {
         this.unrealizedPnlSink = new NoopSink<UnrealizedPnl>();
     }
 
-    public void run() throws Exception {
+    /**
+     * Holder for computed streams so callers (tests/cluster jobs) can attach sinks
+     * externally.
+     */
+    public static class Results {
+        public final SingleOutputStreamOperator<Position> positions;
+        public final DataStream<Portfolio> portfolios;
+        public final DataStream<RiskAlert> riskAlerts;
+        public final DataStream<TradeMatch> tradeMatches;
+        public final DataStream<RealizedPnl> realizedPnl;
+        public final DataStream<UnrealizedPnl> unrealizedPnl;
+        public final DataStream<PositionClose> positionCloses;
+
+        public Results(SingleOutputStreamOperator<Position> positions,
+                DataStream<Portfolio> portfolios,
+                DataStream<RiskAlert> riskAlerts,
+                DataStream<TradeMatch> tradeMatches,
+                DataStream<RealizedPnl> realizedPnl,
+                DataStream<UnrealizedPnl> unrealizedPnl,
+                DataStream<PositionClose> positionCloses) {
+            this.positions = positions;
+            this.portfolios = portfolios;
+            this.riskAlerts = riskAlerts;
+            this.tradeMatches = tradeMatches;
+            this.realizedPnl = realizedPnl;
+            this.unrealizedPnl = unrealizedPnl;
+            this.positionCloses = positionCloses;
+        }
+    }
+
+    /**
+     * Optional sinks for cluster mode. Null means no sink will be attached here.
+     */
+    public static class Sinks {
+        public final Sink<Position> positionSink;
+        public final Sink<Portfolio> portfolioSink;
+        public final Sink<RiskAlert> riskAlertSink;
+        public final Sink<TradeMatch> tradeMatchSink;
+        public final Sink<RealizedPnl> realizedPnlSink;
+        public final Sink<UnrealizedPnl> unrealizedPnlSink;
+        public final Sink<PositionClose> positionCloseSink;
+
+        public Sinks(Sink<Position> positionSink,
+                Sink<Portfolio> portfolioSink,
+                Sink<RiskAlert> riskAlertSink,
+                Sink<TradeMatch> tradeMatchSink,
+                Sink<RealizedPnl> realizedPnlSink,
+                Sink<UnrealizedPnl> unrealizedPnlSink,
+                Sink<PositionClose> positionCloseSink) {
+            this.positionSink = positionSink;
+            this.portfolioSink = portfolioSink;
+            this.riskAlertSink = riskAlertSink;
+            this.tradeMatchSink = tradeMatchSink;
+            this.realizedPnlSink = realizedPnlSink;
+            this.unrealizedPnlSink = unrealizedPnlSink;
+            this.positionCloseSink = positionCloseSink;
+        }
+    }
+
+    /**
+     * Build the portfolio/risk pipeline from ExecReports and AccountPolicy.
+     * Optionally attach sinks.
+     */
+    public static Results processExecReports(DataStream<ExecReport> execReports,
+            DataStream<AccountPolicy> accountPolicies,
+            Sinks sinksOrNull) {
+        // Positions from exec reports
         SingleOutputStreamOperator<Position> positions = execReports
                 .keyBy(r -> r.accountId + "|" + r.symbol)
                 .process(new PositionUpdater());
@@ -139,54 +205,66 @@ public class PortfolioAndRiskJob implements Serializable {
                 .connect(priceTicks.keyBy(pt -> pt.accountId + "|" + pt.symbol))
                 .process(new UnrealizedPnlCalculator());
 
+        // Portfolio and risk alerts
         DataStream<Portfolio> portfolios = positions
                 .keyBy(p -> p.accountId)
                 .connect(accountPolicies.keyBy(p -> p.accountId))
                 .process(new PortfolioUpdater());
 
-        DataStream<RiskAlert> riskAlerts = portfolios
-                .process(new RiskEngine());
+        DataStream<RiskAlert> riskAlerts = portfolios.process(new RiskEngine());
 
-        // Use sinks if provided, otherwise fall back to printing
-        if (positionSink != null) {
-            positions.sinkTo(positionSink);
-        } else {
-            positions.print("POS");
+        // Attach sinks if provided; otherwise print for debugging
+        if (sinksOrNull != null) {
+            if (sinksOrNull.positionSink != null) {
+                positions.sinkTo(sinksOrNull.positionSink);
+            } else {
+                positions.print("POS");
+            }
+            if (sinksOrNull.portfolioSink != null) {
+                portfolios.sinkTo(sinksOrNull.portfolioSink);
+            } else {
+                portfolios.print("PF");
+            }
+            if (sinksOrNull.riskAlertSink != null) {
+                riskAlerts.sinkTo(sinksOrNull.riskAlertSink);
+            } else {
+                riskAlerts.print("RISK");
+            }
+            if (sinksOrNull.positionCloseSink != null) {
+                positionCloses.sinkTo(sinksOrNull.positionCloseSink);
+            } else {
+                positionCloses.print("POS_CLOSE");
+            }
+            if (sinksOrNull.tradeMatchSink != null) {
+                tradeMatches.sinkTo(sinksOrNull.tradeMatchSink);
+            } else {
+                tradeMatches.print("MATCH");
+            }
+            if (sinksOrNull.realizedPnlSink != null) {
+                realizedPnl.sinkTo(sinksOrNull.realizedPnlSink);
+            } else {
+                realizedPnl.print("REALIZED");
+            }
+            if (sinksOrNull.unrealizedPnlSink != null) {
+                unrealizedPnl.sinkTo(sinksOrNull.unrealizedPnlSink);
+            } else {
+                unrealizedPnl.print("UNREAL");
+            }
         }
 
-        if (portfolioSink != null) {
-            portfolios.sinkTo(portfolioSink);
-        } else {
-            portfolios.print("PF");
-        }
+        return new Results(positions, portfolios, riskAlerts, tradeMatches, realizedPnl, unrealizedPnl, positionCloses);
+    }
 
-        if (riskAlertSink != null) {
-            riskAlerts.sinkTo(riskAlertSink);
-        } else {
-            riskAlerts.print("RISK");
-        }
-
-        if (positionCloseSink != null) {
-            positionCloses.sinkTo(positionCloseSink);
-        } else {
-            positionCloses.print("POS_CLOSE");
-        }
-
-        // Optional sinks for trade history and P&L history
-        if (tradeMatchSink != null) {
-            tradeMatches.sinkTo(tradeMatchSink);
-        }
-        if (realizedPnlSink != null) {
-            realizedPnl.sinkTo(realizedPnlSink);
-        }
-        if (unrealizedPnlSink != null) {
-            unrealizedPnl.sinkTo(unrealizedPnlSink);
-        }
-
-        // Always print exec reports and trade matches for debugging
-        tradeMatches.print("MATCH");
-        realizedPnl.print("REALIZED");
-        unrealizedPnl.print("UNREAL");
+    public void run() throws Exception {
+        // Route through the static processor using the instance sinks
+        processExecReports(this.execReports, this.accountPolicies, new Sinks(
+                this.positionSink,
+                this.portfolioSink,
+                this.riskAlertSink,
+                this.tradeMatchSink,
+                this.realizedPnlSink,
+                this.unrealizedPnlSink,
+                this.positionCloseSink));
     }
 
 }
