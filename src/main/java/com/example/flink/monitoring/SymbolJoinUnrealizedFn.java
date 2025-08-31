@@ -2,7 +2,6 @@ package com.example.flink.monitoring;
 
 
 import com.example.flink.domain.*;
-import com.example.flink.monitoring.domain.*;
 import org.apache.flink.api.common.state.*;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;

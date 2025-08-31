@@ -6,6 +6,7 @@ import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.util.OutputTag;
 
 import java.time.Duration;
@@ -66,6 +67,10 @@ public class TradingEngine {
         DataStream<PositionUpdater.RealizedPnlChange> pnlUpdates = processed.getSideOutput(PNL_OUT);
         DataStream<PositionUpdater.TradeMatch> matchUpdates       = processed.getSideOutput(MATCH_OUT);
 
+        var tEnv = StreamTableEnvironment.create(env);
+        FlussTableBridge.attach(tEnv, lotsUpdates, rollupUpdates, pnlUpdates);
+
+
         lotsUpdates.sinkTo(positionLotChangeSink);
         rollupUpdates.sinkTo(positionRollupChangeSink);
         if (realizedPnlSink != null) {
@@ -73,7 +78,6 @@ public class TradingEngine {
         }
             if (tradeMatchSink != null)  matchUpdates.sinkTo(tradeMatchSink);
 
-       // var tEnv = StreamTableEnvironment.create(env);
-       // FlussTableBridge.attach(tEnv, lotsUpdates, rollupUpdates, pnlUpdates);
+
     }
 }

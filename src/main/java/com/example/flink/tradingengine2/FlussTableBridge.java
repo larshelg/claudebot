@@ -8,24 +8,22 @@ import org.apache.flink.types.Row;
 import org.apache.flink.types.RowKind;
 
 import java.sql.Timestamp;
-import java.time.Instant;
-
-import static org.apache.flink.table.api.Expressions.$;
 
 public final class FlussTableBridge {
 
-    private FlussTableBridge(){}
+    private FlussTableBridge() {
+    }
 
     public static void attach(StreamTableEnvironment tEnv,
-                              DataStream<PositionUpdater.PositionLotChange> lots,
-                              DataStream<PositionUpdater.PositionRollupChange> rollup,
-                              DataStream<PositionUpdater.RealizedPnlChange> pnlLatest) {
+            DataStream<PositionUpdater.PositionLotChange> lots,
+            DataStream<PositionUpdater.PositionRollupChange> rollup,
+            DataStream<PositionUpdater.RealizedPnlChange> pnlLatest) {
 
         // LOTS → RowKind
         DataStream<Row> lotsRows = lots.map(ch -> {
             Row row = (ch.op == PositionUpdater.Op.DELETE)
                     ? Row.withNames(RowKind.DELETE)
-                    : Row.withNames(RowKind.UPSERT);
+                    : Row.withNames(RowKind.UPDATE_AFTER);
             row.setField("accountId", ch.key.accountId);
             row.setField("strategyId", ch.key.strategyId);
             row.setField("symbol", ch.key.symbol);
@@ -54,9 +52,8 @@ public final class FlussTableBridge {
                         .column("avgPrice", "DOUBLE")
                         .column("tsOpen", "TIMESTAMP(3)")
                         .column("tsUpdated", "TIMESTAMP(3)")
-                        .primaryKey("accountId", "strategyId", "symbol", "lotId").notEnforced()
-                        .build()
-        );
+                        .primaryKey("accountId", "strategyId", "symbol", "lotId")
+                        .build());
         tEnv.createTemporaryView("lots_updates_view", lotsTable);
         tEnv.executeSql("INSERT INTO fluss.open_positions_lots SELECT * FROM lots_updates_view");
 
@@ -64,7 +61,7 @@ public final class FlussTableBridge {
         DataStream<Row> rollRows = rollup.map(ch -> {
             Row row = (ch.op == PositionUpdater.Op.DELETE)
                     ? Row.withNames(RowKind.DELETE)
-                    : Row.withNames(RowKind.UPSERT);
+                    : Row.withNames(RowKind.UPDATE_AFTER);
             row.setField("accountId", ch.key.accountId);
             row.setField("strategyId", ch.key.strategyId);
             row.setField("symbol", ch.key.symbol);
@@ -87,15 +84,14 @@ public final class FlussTableBridge {
                         .column("netQty", "DOUBLE")
                         .column("avgPrice", "DOUBLE")
                         .column("lastUpdated", "TIMESTAMP(3)")
-                        .primaryKey("accountId", "strategyId", "symbol").notEnforced()
-                        .build()
-        );
+                        .primaryKey("accountId", "strategyId", "symbol")
+                        .build());
         tEnv.createTemporaryView("rollup_updates_view", rollTable);
         tEnv.executeSql("INSERT INTO fluss.open_positions_rollup SELECT * FROM rollup_updates_view");
 
         // REALIZED PNL LATEST (UPSERT only)
         DataStream<Row> pnlRows = pnlLatest.map(ch -> {
-            Row row = Row.withNames(RowKind.UPSERT);
+            Row row = Row.withNames(RowKind.UPDATE_AFTER);
             row.setField("accountId", ch.accountId);
             row.setField("strategyId", ch.strategyId);
             row.setField("symbol", ch.symbol);
@@ -112,9 +108,8 @@ public final class FlussTableBridge {
                         .column("symbol", "STRING")
                         .column("realizedPnl", "DOUBLE")
                         .column("ts", "TIMESTAMP(3)")
-                        .primaryKey("accountId", "strategyId", "symbol").notEnforced()
-                        .build()
-        );
+                        .primaryKey("accountId", "strategyId", "symbol")
+                        .build());
         tEnv.createTemporaryView("realized_pnl_latest_view", pnlTable);
         tEnv.executeSql("INSERT INTO fluss.realized_pnl_latest SELECT * FROM realized_pnl_latest_view");
     }

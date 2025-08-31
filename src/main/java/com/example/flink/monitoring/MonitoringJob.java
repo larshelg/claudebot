@@ -1,6 +1,5 @@
 package com.example.flink.monitoring;
 
-
 import com.example.flink.domain.PriceTick;
 import com.example.flink.domain.RollupChange;
 import com.example.flink.domain.UnrealizedPnlChange;
@@ -16,26 +15,25 @@ import java.time.Duration;
 public class MonitoringJob {
 
     /**
-     * Wire up Monitoring: Rollup changelog + Prices -> Unrealized PnL (UPSERT/DELETE).
+     * Wire up Monitoring: Rollup changelog + Prices -> Unrealized PnL
+     * (UPSERT/DELETE).
      */
     public static void build(StreamExecutionEnvironment env,
-                             DataStream<RollupChange> rollupChanges,
-                             DataStream<PriceTick> priceTicks,
-                             Sink<UnrealizedPnlChange> unrealizedSink) {
+            DataStream<RollupChange> rollupChanges,
+            DataStream<PriceTick> priceTicks,
+            Sink<UnrealizedPnlChange> unrealizedSink) {
 
         DataStream<RollupChange> rollupsWm = rollupChanges.assignTimestampsAndWatermarks(
                 WatermarkStrategy.<RollupChange>forBoundedOutOfOrderness(Duration.ofSeconds(5))
-                        .withTimestampAssigner((e, ts) -> e.ts)
-        );
+                        .withTimestampAssigner((e, ts) -> e.ts));
 
         DataStream<PriceTick> pricesWm = priceTicks.assignTimestampsAndWatermarks(
                 WatermarkStrategy.<PriceTick>forBoundedOutOfOrderness(Duration.ofSeconds(2))
-                        .withTimestampAssigner((e, ts) -> e.ts)
-        );
+                        .withTimestampAssigner((e, ts) -> e.ts));
 
-        pricesWm
-                .keyBy((KeySelector<PriceTick, String>) p -> p.symbol)
-                .connect(rollupsWm.keyBy((KeySelector<RollupChange, String>) r -> r.symbol))
+        rollupsWm
+                .keyBy((KeySelector<RollupChange, String>) r -> r.symbol)
+                .connect(pricesWm.keyBy((KeySelector<PriceTick, String>) p -> p.symbol))
                 .process(new SymbolJoinUnrealizedFn())
                 .name("UnrealizedPnL-BySymbol")
                 .sinkTo(unrealizedSink)
@@ -46,7 +44,8 @@ public class MonitoringJob {
     public static void main(String[] args) throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        // TODO: replace with real sources (e.g., Fluss rollup changelog source, Kafka prices)
+        // TODO: replace with real sources (e.g., Fluss rollup changelog source, Kafka
+        // prices)
         DataStream<RollupChange> rollups = env.fromElements();
         DataStream<PriceTick> prices = env.fromElements();
 
@@ -60,11 +59,22 @@ public class MonitoringJob {
     /** Tiny blackhole sink placeholder. Replace with your Fluss sink. */
     static final class Sinks {
         static final class Blackhole<T> implements Sink<T> {
-            @Override public SinkWriter<T> createWriter(InitContext context) { return new SinkWriter<>() {
-                @Override public void write(T element, Context context) {}
-                @Override public void flush(boolean endOfInput) {}
-                @Override public void close() {}
-            }; }
+            @Override
+            public SinkWriter<T> createWriter(InitContext context) {
+                return new SinkWriter<>() {
+                    @Override
+                    public void write(T element, Context context) {
+                    }
+
+                    @Override
+                    public void flush(boolean endOfInput) {
+                    }
+
+                    @Override
+                    public void close() {
+                    }
+                };
+            }
         }
     }
 }
