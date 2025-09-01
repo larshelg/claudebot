@@ -1,5 +1,6 @@
 package com.example.flink;
 
+import com.example.flink.domain.StrategySignal;
 import com.example.flink.serializer.*;
 import com.example.flink.strategy.*;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
@@ -12,7 +13,6 @@ import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.table.data.RowData;
 import org.junit.ClassRule;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.time.Duration;
 import java.util.*;

@@ -1,5 +1,6 @@
 package com.example.flink;
 
+import com.example.flink.domain.StrategySignal;
 import com.example.flink.serializer.CandleFlexible;
 import com.example.flink.serializer.IndicatorRowFlexible;
 import com.example.flink.strategy.TradingStrategy;

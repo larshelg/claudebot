@@ -1,6 +1,6 @@
 package com.example.flink.strategyengine;
 
-import com.example.flink.StrategySignal;
+import com.example.flink.domain.StrategySignal;
 import com.example.flink.domain.AccountPolicy;
 import com.example.flink.domain.TradeSignal;
 import com.example.flink.domain.Position;
@@ -60,13 +60,14 @@ public class StrategyChooserJob implements Serializable {
             Sinks sinksOrNull) {
         DataStream<TradeSignal> rawTradeSignals = strategySignals
                 .map(sig -> new TradeSignal(
-                        sig.runId != null ? sig.runId : "ACC_DEFAULT",
+                        "ACCOUNT1",
                         sig.symbol,
                         "BUY".equalsIgnoreCase(sig.signal) ? 1.0
                                 : ("SELL".equalsIgnoreCase(sig.signal) ? -1.0 : 0.0),
                         sig.close,
                         sig.timestamp))
                 .returns(TradeSignal.class);
+
 
         DataStream<PreTradeRiskCheckWithPositions.Control> control = accountPolicies
                 .map(PreTradeRiskCheckWithPositions.Control::fromPolicy)

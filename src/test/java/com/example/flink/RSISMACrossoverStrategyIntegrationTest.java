@@ -1,5 +1,6 @@
 package com.example.flink;
 
+import com.example.flink.domain.StrategySignal;
 import com.example.flink.serializer.*;
 import com.example.flink.strategy.*;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;

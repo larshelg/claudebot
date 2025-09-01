@@ -1,4 +1,4 @@
-package com.example.flink;
+package com.example.flink.domain;
 
 import java.io.Serializable;
 

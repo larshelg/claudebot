@@ -1,227 +1,258 @@
 package com.example.flink.tradingengine2;
 
-
-import org.apache.flink.api.common.state.*;
-import org.apache.flink.api.common.time.Time;
+import com.example.flink.domain.TradeSignal;
+import org.apache.flink.api.common.state.BroadcastState;
+import org.apache.flink.api.common.state.MapStateDescriptor;
+import org.apache.flink.api.common.state.ReadOnlyBroadcastState;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.streaming.api.datastream.ConnectedStreams;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.BroadcastConnectedStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.co.KeyedCoProcessFunction;
+import org.apache.flink.streaming.api.functions.co.KeyedBroadcastProcessFunction;
 import org.apache.flink.util.Collector;
-import org.apache.flink.util.OutputTag;
 
 import java.io.Serializable;
-import java.util.Objects;
+import java.util.Map;
 
 /**
- * TradePicker (Open-Position Gate)
- * Keyed by accountId. Maintains a Set<symbol> of open positions from rollup deltas.
- * On each incoming trade signal:
- *  - allow if symbol is already open, or openCount < maxOpenPositions,
- *  - otherwise reject with a clear reason.
+ * TradePicker (Account Router)
+ *
+ * Inputs:
+ *  - StrategySignal (no accountId)
+ *  - RollupChange (who holds what)
+ *  - AccountPolicy (capacity + status)
+ *
+ * Output:
+ *  - TradeSignal (with chosen accountId)
+ *
+ * Selection:
+ *  - Consider only ACTIVE accounts with openCount < maxOpenSymbols.
+ *  - Prefer accounts that DO NOT currently hold the symbol.
+ *  - Tie-breaker: least openCount; then lexicographic accountId.
+ *  - If no account has capacity => drop the signal.
  */
 public final class TradePicker {
 
     private TradePicker() {}
 
-    // Side outputs for visibility
-    public static final OutputTag<RejectedSignal> REJECTED_OUT =
-            new OutputTag<>("rejected-signal") {};
+    // --- Broadcast state descriptors (small control data) ---
+    // Map: accountId -> meta (status, maxOpen, openCount)
+    public static final MapStateDescriptor<String, AccountMeta> META_DESC =
+            new MapStateDescriptor<>("accountMeta",
+                    org.apache.flink.api.common.typeinfo.Types.STRING,
+                    org.apache.flink.api.common.typeinfo.Types.POJO(AccountMeta.class));
+
+    // Map: "accountId|symbol" -> Boolean(open)
+    public static final MapStateDescriptor<String, Boolean> HELD_DESC =
+            new MapStateDescriptor<>("heldSymbols",
+                    org.apache.flink.api.common.typeinfo.Types.STRING,
+                    org.apache.flink.api.common.typeinfo.Types.BOOLEAN);
 
     /** Wire the job. */
-    public static DataStream<AcceptedSignal> build(StreamExecutionEnvironment env,
-                                                   DataStream<RollupChange> rollupDeltas,
-                                                   DataStream<TradeSignal> signals,
-                                                   int maxOpenPositions) {
+    public static DataStream<TradeSignal> build(StreamExecutionEnvironment env,
+                                                DataStream<StrategySignal> strategySignals,
+                                                DataStream<RollupChange> rollupDeltas,
+                                                DataStream<AccountPolicy> policies,
+                                                double defaultQty,
+                                                boolean allowScaleInIfAlreadyHolding) {
 
-        ConnectedStreams<RollupChange, TradeSignal> connected =
-                rollupDeltas.keyBy((KeySelector<RollupChange, String>) r -> r.accountId)
-                        .connect(
-                                signals.keyBy((KeySelector<TradeSignal, String>) s -> s.accountId));
+        // Turn the two control streams into a single tagged control stream
+        DataStream<Control> control =
+                policies.map(Control::fromPolicy).returns(Control.class)
+                        .union(
+                                rollupDeltas.map(Control::fromPosition).returns(Control.class)
+                        );
 
-        DataStream<AcceptedSignal> accepted =
-                connected.process(new GateFn(maxOpenPositions))
-                        .name("OpenPositionGate");
+        // Key by symbol (so all decisions for a symbol are consistent),
+        // and broadcast the control stream (policies + open/close deltas).
+        BroadcastConnectedStream<StrategySignal, Control> connected =
+                strategySignals.keyBy((KeySelector<StrategySignal, String>) s -> s.symbol)
+                        .connect(control.broadcast(META_DESC, HELD_DESC));
 
-        return accepted;
+        return connected
+                .process(new RouterFn(defaultQty, allowScaleInIfAlreadyHolding))
+                .name("TradePickerRouter");
     }
 
-    /** The gate operator. */
-    // inside TradePicker
-
-    static final class GateFn extends KeyedCoProcessFunction<String, RollupChange, TradeSignal, AcceptedSignal> {
+    // === Router ===
+    static final class RouterFn extends KeyedBroadcastProcessFunction<String, StrategySignal, Control, TradeSignal> {
         private static final double EPS = 1e-12;
 
-        private final int maxOpen;
-        private final boolean sellRequiresLong;   // if true: SELL only allowed when netQty > 0
-        private final boolean reserveOnOpen;      // if true: create pending reservation to avoid race
-        private final long   reservationTtlMs;    // TTL for pending reservations
+        private final double defaultQty;
+        private final boolean allowScaleIn;
 
-        private transient MapState<String, PositionSnap> positions;   // symbol -> snapshot
-        private transient ValueState<Integer> openCount;              // #symbols currently open
-        private transient MapState<String, Long> pendingOpens;        // symbol -> expiryTs
-        private transient ValueState<Integer> pendingCount;           // #pending
-
-        GateFn(int maxOpen) {
-            this(maxOpen, /*sellRequiresLong=*/true, /*reserveOnOpen=*/true, /*reservationTtlMs=*/5 * 60_000L);
-        }
-        GateFn(int maxOpen, boolean sellRequiresLong, boolean reserveOnOpen, long reservationTtlMs) {
-            this.maxOpen = maxOpen; this.sellRequiresLong = sellRequiresLong;
-            this.reserveOnOpen = reserveOnOpen; this.reservationTtlMs = reservationTtlMs;
+        RouterFn(double defaultQty, boolean allowScaleIn) {
+            this.defaultQty = defaultQty;
+            this.allowScaleIn = allowScaleIn;
         }
 
         @Override
-        public void open(Configuration parameters) {
-            positions = getRuntimeContext().getMapState(
-                    new MapStateDescriptor<>("positions",
-                            org.apache.flink.api.common.typeinfo.Types.STRING,
-                            org.apache.flink.api.common.typeinfo.Types.POJO(PositionSnap.class)));
+        public void open(Configuration parameters) { /* no keyed state needed */ }
 
-            openCount = getRuntimeContext().getState(
-                    new ValueStateDescriptor<>("openCount", org.apache.flink.api.common.typeinfo.Types.INT));
-
-            pendingOpens = getRuntimeContext().getMapState(
-                    new MapStateDescriptor<>("pendingOpens",
-                            org.apache.flink.api.common.typeinfo.Types.STRING,
-                            org.apache.flink.api.common.typeinfo.Types.LONG));
-
-            pendingCount = getRuntimeContext().getState(
-                    new ValueStateDescriptor<>("pendingCount", org.apache.flink.api.common.typeinfo.Types.INT));
-
-            // init
-            tryInit(openCount, 0);
-            tryInit(pendingCount, 0);
-        }
-
-        private static <T> void tryInit(ValueState<T> s, T v) {
-            try { if (s.value() == null) s.update(v); } catch (Exception ignored) {}
-        }
-
-        // ==== Stream 1: rollup deltas keep positions & counters in sync ====
+        // Handle strategy signals: choose an account and emit TradeSignal
         @Override
-        public void processElement1(RollupChange r, Context ctx, Collector<AcceptedSignal> out) throws Exception {
-            final boolean isOpen = Math.abs(r.netQty) > EPS;
+        public void processElement(StrategySignal s,
+                                   ReadOnlyContext ctx,
+                                   Collector<TradeSignal> out) throws Exception {
+            ReadOnlyBroadcastState<String, AccountMeta> meta =
+                    ctx.getBroadcastState(META_DESC);
+            ReadOnlyBroadcastState<String, Boolean> held =
+                    ctx.getBroadcastState(HELD_DESC);
 
-            PositionSnap prev = positions.get(r.symbol);
-            boolean wasOpen = prev != null;
+            String chosen = null;
+            int chosenOpen = Integer.MAX_VALUE;
 
-            if (!isOpen || r.op == Op.DELETE) {
-                if (wasOpen) {
-                    positions.remove(r.symbol);
-                    openCount.update(openCount.value() - 1);
-                }
-                // clear any reservation
-                if (pendingOpens.contains(r.symbol)) {
-                    pendingOpens.remove(r.symbol);
-                    pendingCount.update(Math.max(0, pendingCount.value() - 1));
-                }
-                return;
-            }
+            // Pass 1: prefer accounts that do NOT already hold the symbol
+            Iterable<Map.Entry<String, AccountMeta>> accounts = meta.immutableEntries();
+            if (accounts == null) return; // no policies yet
 
-            // UPSERT: now open
-            positions.put(r.symbol, new PositionSnap(r.symbol, r.netQty, r.ts));
-            if (!wasOpen) {
-                openCount.update(openCount.value() + 1);
-            }
-            // resolve any reservation
-            if (pendingOpens.contains(r.symbol)) {
-                pendingOpens.remove(r.symbol);
-                pendingCount.update(Math.max(0, pendingCount.value() - 1));
-            }
-        }
+            for (Map.Entry<String, AccountMeta> e : accounts) {
+                String acct = e.getKey();
+                AccountMeta m = e.getValue();
+                if (m == null) continue;
 
-        // ==== Stream 2: signals get gated ====
-        @Override
-        public void processElement2(TradeSignal s, Context ctx, Collector<AcceptedSignal> out) throws Exception {
-            cleanupExpiredReservations(ctx);
+                if (!"ACTIVE".equalsIgnoreCase(m.status)) continue;
+                if (m.openCount >= m.maxOpenSymbols) continue;
 
-            final boolean isBuy = "BUY".equalsIgnoreCase(s.action);
-            final boolean isSell = "SELL".equalsIgnoreCase(s.action);
-
-            boolean alreadyOpen = positions.contains(s.symbol);
-            boolean reserved    = pendingOpens.contains(s.symbol);
-            int effOpen = openCount.value() + pendingCount.value();
-
-            if (isBuy) {
-                if (alreadyOpen || reserved || effOpen < maxOpen) {
-                    // create a reservation if this opens a NEW symbol
-                    if (!alreadyOpen && !reserved && reserveOnOpen) {
-                        long exp = (s.ts > 0 ? s.ts : System.currentTimeMillis()) + reservationTtlMs;
-                        pendingOpens.put(s.symbol, exp);
-                        pendingCount.update(pendingCount.value() + 1);
+                boolean alreadyHolding = Boolean.TRUE.equals(held.get(acct + "|" + s.symbol));
+                if (!alreadyHolding) {
+                    if (m.openCount < chosenOpen || (m.openCount == chosenOpen && (chosen == null || acct.compareTo(chosen) < 0))) {
+                        chosen = acct;
+                        chosenOpen = m.openCount;
                     }
-                    out.collect(AcceptedSignal.from(s, "OK"));
-                } else {
-                    ctx.output(TradePicker.REJECTED_OUT,
-                            RejectedSignal.from(s, "OPEN_LIMIT_EXCEEDED",
-                                    "Account " + s.accountId + " has " + effOpen + " open (limit " + maxOpen + ")"));
                 }
-                return;
             }
 
-            if (isSell) {
-                PositionSnap ps = positions.get(s.symbol);
-                if (ps == null) {
-                    // Symbol is not open — likely closed by stop or another action
-                    ctx.output(TradePicker.REJECTED_OUT,
-                            RejectedSignal.from(s, "NO_OPEN_POSITION",
-                                    "No open position for " + s.symbol + " on account " + s.accountId));
-                    return;
+            // Pass 2: allow scale-in if configured and none picked in pass 1
+            if (chosen == null && allowScaleIn) {
+                for (Map.Entry<String, AccountMeta> e : meta.immutableEntries()) {
+                    String acct = e.getKey();
+                    AccountMeta m = e.getValue();
+                    if (m == null) continue;
+
+                    if (!"ACTIVE".equalsIgnoreCase(m.status)) continue;
+                    if (m.openCount >= m.maxOpenSymbols) continue;
+
+                    boolean alreadyHolding = Boolean.TRUE.equals(held.get(acct + "|" + s.symbol));
+                    if (alreadyHolding) {
+                        if (m.openCount < chosenOpen || (m.openCount == chosenOpen && (chosen == null || acct.compareTo(chosen) < 0))) {
+                            chosen = acct;
+                            chosenOpen = m.openCount;
+                        }
+                    }
                 }
-                if (sellRequiresLong && ps.netQty <= 0.0) {
-                    // Strict mode: SELL allowed only when there's a long to exit
-                    ctx.output(TradePicker.REJECTED_OUT,
-                            RejectedSignal.from(s, "NO_LONG_TO_SELL",
-                                    "Current net is " + ps.netQty + " (not long); SELL ignored"));
-                    return;
-                }
-                out.collect(AcceptedSignal.from(s, "OK"));
-                return;
             }
 
-            // Other actions pass through by default (or handle explicitly)
-            out.collect(AcceptedSignal.from(s, "OK"));
+            if (chosen == null) return; // no capacity anywhere
+
+            TradeSignal t = new TradeSignal();
+            t.signalId   = s.runId + "-" + s.timestamp;
+            t.accountId  = chosen;
+            t.strategyId = s.runId;
+            t.symbol     = s.symbol;
+            t.action     = s.signal;   // "BUY"/"SELL"
+            t.qty        = defaultQty; // or your sizing logic
+            t.ts         = s.timestamp;
+
+            out.collect(t);
         }
 
-        // Expire stale reservations (e.g., if rollup never arrived)
-        private void cleanupExpiredReservations(Context ctx) throws Exception {
-            long now = System.currentTimeMillis();
-            int removed = 0;
-            for (String sym : pendingOpens.keys()) {
-                Long exp = pendingOpens.get(sym);
-                if (exp != null && exp < now) {
-                    pendingOpens.remove(sym);
-                    removed++;
-                }
+        // Handle broadcast controls: update account meta and held symbols
+        @Override
+        public void processBroadcastElement(Control c,
+                                            Context ctx,
+                                            Collector<TradeSignal> out) throws Exception {
+            BroadcastState<String, AccountMeta> meta = ctx.getBroadcastState(META_DESC);
+            BroadcastState<String, Boolean> held = ctx.getBroadcastState(HELD_DESC);
+
+            if (c.policy != null) {
+                // Upsert policy → ensure meta row exists then update status/maxOpen
+                AccountPolicy p = c.policy;
+                AccountMeta m = meta.get(p.accountId);
+                if (m == null) m = new AccountMeta(p.accountId, p.maxOpenSymbols, p.status, 0);
+                m.maxOpenSymbols = p.maxOpenSymbols;
+                m.status = p.status;
+                meta.put(p.accountId, m);
+                return;
             }
-            if (removed > 0) pendingCount.update(Math.max(0, pendingCount.value() - removed));
+
+            if (c.positionDelta != null) {
+                RollupChange r = c.positionDelta;
+                String k = key(r.accountId, r.symbol);
+                boolean isOpen = Math.abs(r.netQty) > EPS && r.op == Op.UPSERT;
+
+                AccountMeta m = meta.get(r.accountId);
+                if (m == null) {
+                    // If we receive a position delta before policy, create a minimal ACTIVE row with huge capacity
+                    m = new AccountMeta(r.accountId, Integer.MAX_VALUE / 2, "ACTIVE", 0);
+                }
+
+                Boolean prev = held.get(k);
+                if (isOpen) {
+                    if (prev == null || !prev) {
+                        // transition: CLOSED -> OPEN
+                        m.openCount += 1;
+                        held.put(k, Boolean.TRUE);
+                    } else {
+                        // OPEN -> OPEN (qty change) : no count change
+                        held.put(k, Boolean.TRUE);
+                    }
+                } else { // DELETE or net=0
+                    if (prev != null && prev) {
+                        // transition: OPEN -> CLOSED
+                        m.openCount = Math.max(0, m.openCount - 1);
+                        held.remove(k);
+                    } // else CLOSED -> CLOSED: no-op
+                }
+                meta.put(r.accountId, m);
+            }
+        }
+
+        private static String key(String accountId, String symbol) {
+            return accountId + "|" + symbol;
         }
     }
 
-    // ===== helper POJO kept small =====
-    public static class PositionSnap implements Serializable {
-        public PositionSnap() {}
+    // === Data classes ===
+
+    /** Small meta kept in broadcast state (per account). */
+    public static class AccountMeta implements Serializable {
+        public String accountId;
+        public int maxOpenSymbols;
+        public String status; // ACTIVE/BLOCKED
+        public int openCount;
+
+        public AccountMeta() {}
+        public AccountMeta(String accountId, int maxOpenSymbols, String status, int openCount) {
+            this.accountId = accountId;
+            this.maxOpenSymbols = maxOpenSymbols;
+            this.status = status;
+            this.openCount = openCount;
+        }
+    }
+
+    public static class StrategySignal implements Serializable {
+        public String runId;
         public String symbol;
-        public double netQty;  // sign indicates side
-        public long   ts;
-        public PositionSnap(String symbol, double netQty, long ts) {
-            this.symbol = symbol; this.netQty = netQty; this.ts = ts;
-        }
+        public long timestamp;
+        public double close;
+        public double sma5;
+        public double sma21;
+        public String signal; // "BUY" / "SELL"
+        public double signalStrength;
+        public StrategySignal() {}
     }
-
-    // ======= POJOs =======
 
     public enum Op { UPSERT, DELETE }
 
-    /** Rollup changelog event (from fluss.open_positions_rollup). */
+    /** Rollup changelog event (from open_positions_rollup). */
     public static class RollupChange implements Serializable {
-        public RollupChange() {}
         public Op op;
         public String accountId, strategyId, symbol;
         public double netQty, avgPrice;
         public long ts;
+        public RollupChange() {}
         public static RollupChange upsert(String a, String s, String sym, double netQty, double avgPrice, long ts) {
             RollupChange r = new RollupChange();
             r.op=Op.UPSERT; r.accountId=a; r.strategyId=s; r.symbol=sym; r.netQty=netQty; r.avgPrice=avgPrice; r.ts=ts; return r;
@@ -232,48 +263,33 @@ public final class TradePicker {
         }
     }
 
-    /** Incoming trade signal to gate. */
-    public static class TradeSignal implements Serializable {
-        public TradeSignal() {}
-        public String signalId;
-        public String accountId, strategyId, symbol;
-        public String action;   // e.g., BUY/SELL/OPEN/CLOSE — gate is symbol-level
-        public double qty;
+    /** Account policy events. */
+    public static class AccountPolicy implements Serializable {
+        public String accountId;
+        public int maxOpenSymbols;
+        public String status; // ACTIVE / BLOCKED
+        public double initialCapital;
         public long ts;
-    }
-
-    /** Accepted signal (passes through to engine/allocator). */
-    public static class AcceptedSignal implements Serializable {
-        public AcceptedSignal() {}
-        public String signalId;
-        public String accountId, strategyId, symbol;
-        public String action;
-        public double qty;
-        public long ts;
-        public String reason; // "OK" or note
-
-        static AcceptedSignal from(TradeSignal s, String reason) {
-            AcceptedSignal a = new AcceptedSignal();
-            a.signalId=s.signalId; a.accountId=s.accountId; a.strategyId=s.strategyId;
-            a.symbol=s.symbol; a.action=s.action; a.qty=s.qty; a.ts=s.ts; a.reason=reason; return a;
+        public AccountPolicy() {}
+        public AccountPolicy(String accountId, int maxOpenSymbols, String status, long ts) {
+            this(accountId, maxOpenSymbols, status, 100_000.0, ts);
+        }
+        public AccountPolicy(String accountId, int maxOpenSymbols, String status, double initialCapital, long ts) {
+            this.accountId = accountId;
+            this.maxOpenSymbols = maxOpenSymbols;
+            this.status = status;
+            this.initialCapital = initialCapital;
+            this.ts = ts;
         }
     }
 
-    /** Rejected signal (side output). */
-    public static class RejectedSignal implements Serializable {
-        public RejectedSignal() {}
-        public String signalId;
-        public String accountId, strategyId, symbol;
-        public String action;
-        public double qty;
-        public long ts;
-        public String code;    // e.g., OPEN_LIMIT_EXCEEDED
-        public String message; // human-readable
-
-        static RejectedSignal from(TradeSignal s, String code, String message) {
-            RejectedSignal r = new RejectedSignal();
-            r.signalId=s.signalId; r.accountId=s.accountId; r.strategyId=s.strategyId;
-            r.symbol=s.symbol; r.action=s.action; r.qty=s.qty; r.ts=s.ts; r.code=code; r.message=message; return r;
-        }
+    /** Control wrapper for broadcast union. */
+    public static class Control implements Serializable {
+        public AccountPolicy policy;
+        public RollupChange positionDelta;
+        public Control() {}
+        public static Control fromPolicy(AccountPolicy p) { Control c = new Control(); c.policy = p; return c; }
+        public static Control fromPosition(RollupChange r) { Control c = new Control(); c.positionDelta = r; return c; }
     }
+
 }

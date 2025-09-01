@@ -1,6 +1,6 @@
 package com.example.flink.tradeengine;
 
-import com.example.flink.StrategySignal;
+import com.example.flink.domain.StrategySignal;
 import com.example.flink.domain.AccountPolicy;
 import com.example.flink.domain.Position;
 import com.example.flink.exchange.LocalTestOrderExecutionJob;

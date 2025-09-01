@@ -1,6 +1,6 @@
 package com.example.flink.serializer;
 
-import com.example.flink.StrategySignal;
+import com.example.flink.domain.StrategySignal;
 import org.apache.flink.table.data.*;
 
 import java.math.BigDecimal;

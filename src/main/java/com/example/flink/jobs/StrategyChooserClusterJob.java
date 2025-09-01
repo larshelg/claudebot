@@ -4,7 +4,7 @@ import com.alibaba.fluss.flink.source.FlussSource;
 import com.alibaba.fluss.flink.source.enumerator.initializer.OffsetsInitializer;
 import com.alibaba.fluss.flink.sink.FlussSink;
 import com.alibaba.fluss.flink.sink.serializer.RowDataSerializationSchema;
-import com.example.flink.StrategySignal;
+import com.example.flink.domain.StrategySignal;
 import com.example.flink.domain.AccountPolicy;
 import com.example.flink.domain.Position;
 import com.example.flink.domain.TradeSignal;

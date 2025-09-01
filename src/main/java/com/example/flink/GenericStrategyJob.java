@@ -1,28 +1,18 @@
 package com.example.flink;
 
-import com.alibaba.fluss.flink.sink.FlussSink;
-import com.alibaba.fluss.flink.sink.serializer.RowDataSerializationSchema;
-import com.alibaba.fluss.flink.source.FlinkSource;
-import com.alibaba.fluss.flink.source.FlussSource;
-import com.alibaba.fluss.flink.source.enumerator.initializer.OffsetsInitializer;
+import com.example.flink.domain.StrategySignal;
 import com.example.flink.serializer.*;
 import com.example.flink.strategy.TradingStrategy;
-import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.datastream.DataStreamSource;
-import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.co.ProcessJoinFunction;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.util.Collector;
 
 import java.io.Serializable;
-import java.time.Duration;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 public class GenericStrategyJob implements Serializable {
 

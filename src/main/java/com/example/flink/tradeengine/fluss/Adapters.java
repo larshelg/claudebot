@@ -10,7 +10,6 @@ import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.api.connector.sink2.SinkWriter;
 import org.apache.flink.table.data.*;
 
-import java.math.BigDecimal;
 import java.util.function.Function;
 
 /** Misc adapters for Fluss integration. */
@@ -67,13 +66,13 @@ public class Adapters {
 
     /** Deserializer for StrategySignal from fluss.strategy_signals */
     public static class StrategySignalDeserializationSchema
-            implements FlussDeserializationSchema<com.example.flink.StrategySignal> {
+            implements FlussDeserializationSchema<StrategySignal> {
         @Override
         public void open(InitializationContext context) {
         }
 
         @Override
-        public com.example.flink.StrategySignal deserialize(LogRecord record) {
+        public StrategySignal deserialize(LogRecord record) {
             InternalRow row = record.getRow();
             String runId = row.getString(0).toString();
             String symbol = row.getString(1).toString();
@@ -83,13 +82,13 @@ public class Adapters {
             double sma21 = row.getDecimal(5, 18, 8).toBigDecimal().doubleValue();
             String signal = row.getString(6).toString();
             double signalStrength = row.getDecimal(7, 5, 2).toBigDecimal().doubleValue();
-            return new com.example.flink.StrategySignal(runId, symbol, timestamp, close, sma5, sma21, signal,
+            return new StrategySignal(runId, symbol, timestamp, close, sma5, sma21, signal,
                     signalStrength);
         }
 
         @Override
-        public TypeInformation<com.example.flink.StrategySignal> getProducedType(RowType rowType) {
-            return TypeInformation.of(com.example.flink.StrategySignal.class);
+        public TypeInformation<StrategySignal> getProducedType(RowType rowType) {
+            return TypeInformation.of(StrategySignal.class);
         }
     }
 

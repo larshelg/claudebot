@@ -1,7 +1,7 @@
 package com.example.flink.tradeengine;
 
 import com.example.flink.exchange.LocalTestOrderExecutionJob;
-import com.example.flink.StrategySignal;
+import com.example.flink.domain.StrategySignal;
 import com.example.flink.domain.AccountPolicy;
 import com.example.flink.domain.Position;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
@@ -140,11 +140,11 @@ public class CombinedJobsIntegrationTest {
         // Verify final position is closed (removed from sink due to netQty = 0)
         var pos = TestUpsertSinks.PositionLatestSink.get("ACC_SHORT", "ETHUSD");
         assertNull(pos, "Position should be closed and removed when SELL(-1) + BUY(+1) = 0");
-        
+
         // Verify no open positions remain
         var allPositions = TestUpsertSinks.PositionLatestSink.getResults();
         assertTrue(allPositions.isEmpty(), "No positions should remain open");
-        
+
         System.out.println("Successfully tested SELL -> BUY flow: position opened short and then closed");
     }
 
@@ -200,7 +200,7 @@ public class CombinedJobsIntegrationTest {
         assertNotNull(pos, "Expected short position for ACC_SHORT_ONLY/BTCUSD");
         assertEquals(-1.0, pos.netQty, 1e-6, "Should have short position of -1");
         assertEquals(45000.0, pos.avgPrice, 1e-6, "Average price should match fill price");
-        
+
         System.out.println("Short position created: netQty=" + pos.netQty + ", avgPrice=" + pos.avgPrice);
     }
 
@@ -308,7 +308,7 @@ public class CombinedJobsIntegrationTest {
         // Add trade match sink to capture trade matching results
         TestUpsertSinks.TradeMatchHistorySink.clear();
         results.tradeMatches.sinkTo(new TestUpsertSinks.TradeMatchHistorySink());
-        
+
         // Add position close history sink
         TestUpsertSinks.PositionCloseHistorySink.clear();
         results.positionCloses.sinkTo(new TestUpsertSinks.PositionCloseHistorySink());
@@ -318,29 +318,29 @@ public class CombinedJobsIntegrationTest {
         // Check trade matches first
         var tradeMatches = TestUpsertSinks.TradeMatchHistorySink.getResults();
         System.out.println("Trade matches found: " + tradeMatches.size());
-        tradeMatches.forEach(tm -> System.out.println("  Trade match: " + tm.accountId + "/" + tm.symbol + 
+        tradeMatches.forEach(tm -> System.out.println("  Trade match: " + tm.accountId + "/" + tm.symbol +
                                                      " - Qty: " + tm.matchedQty + ", Buy: " + tm.buyPrice + ", Sell: " + tm.sellPrice + ", PnL: " + tm.realizedPnl));
 
         // Check position close history
         var positionCloses = TestUpsertSinks.PositionCloseHistorySink.getResults();
         System.out.println("Position closes found: " + positionCloses.size());
-        positionCloses.forEach(pc -> System.out.println("  Position close: " + pc.accountId + "/" + pc.symbol + 
-                                                        " - TotalQty: " + pc.totalQty + ", AvgPrice: " + pc.avgPrice + 
+        positionCloses.forEach(pc -> System.out.println("  Position close: " + pc.accountId + "/" + pc.symbol +
+                                                        " - TotalQty: " + pc.totalQty + ", AvgPrice: " + pc.avgPrice +
                                                         ", Duration: " + (pc.closeTs - pc.openTs) + "ms, PnL: " + pc.realizedPnl));
 
         // Check if any positions exist (may be empty if final position nets to 0)
         var positions = TestUpsertSinks.PositionLatestSink.getResults();
         System.out.println("All positions found:");
         positions.forEach(p -> System.out.println("  Account: " + p.accountId + ", Symbol: " + p.symbol + ", NetQty: " + p.netQty));
-        
+
         // Count BUY vs SELL signals to determine expected final position
         int buyCount = (int) strategySignals.stream().filter(s -> "BUY".equals(s.signal)).count();
         int sellCount = (int) strategySignals.stream().filter(s -> "SELL".equals(s.signal)).count();
         double expectedNetQty = buyCount - sellCount;
-        
-        System.out.println("BUY signals: " + buyCount + ", SELL signals: " + sellCount + 
+
+        System.out.println("BUY signals: " + buyCount + ", SELL signals: " + sellCount +
                           ", Expected net qty: " + expectedNetQty);
-        
+
         if (expectedNetQty == 0) {
             // Position should be removed from upsert sink when netted to zero
             var suiPosition = TestUpsertSinks.PositionLatestSink.get("live", "SUI_USDT");
@@ -358,13 +358,13 @@ public class CombinedJobsIntegrationTest {
     private List<StrategySignal> loadStrategySignalsFromJson() throws Exception {
         String filePath = "src/test/java/com/example/flink/tradeengine/signals.json";
         String content = Files.readString(Paths.get(filePath));
-        
+
         ObjectMapper mapper = new ObjectMapper();
         JsonNode jsonArray = mapper.readTree(content);
-        
+
         List<StrategySignal> signals = new ArrayList<>();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
-        
+
         for (JsonNode node : jsonArray) {
             String runId = node.get("run_id").asText();
             String symbol = node.get("symbol").asText();
@@ -374,14 +374,14 @@ public class CombinedJobsIntegrationTest {
             double sma21 = node.get("sma21").asDouble();
             String signal = node.get("signal").asText();
             double signalStrength = node.get("signal_strength").asDouble();
-            
+
             // Convert time string to timestamp
             LocalDateTime dateTime = LocalDateTime.parse(timeStr, formatter);
             long timestamp = dateTime.toEpochSecond(ZoneOffset.UTC) * 1000;
-            
+
             signals.add(new StrategySignal(runId, symbol, timestamp, close, sma5, sma21, signal, signalStrength));
         }
-        
+
         return signals;
     }
 }

@@ -1,13 +1,12 @@
 package com.example.flink.strategy;
 
 import com.example.flink.IndicatorWithPrice;
-import com.example.flink.StrategySignal;
+import com.example.flink.domain.StrategySignal;
 import com.example.flink.serializer.CandleFlexible;
 import com.example.flink.serializer.IndicatorRowFlexible;
 import org.apache.flink.streaming.api.datastream.DataStream;
 
 import java.io.Serializable;
-import java.util.List;
 
 public interface TradingStrategy extends Serializable {
     // For old-style process (ValueState)

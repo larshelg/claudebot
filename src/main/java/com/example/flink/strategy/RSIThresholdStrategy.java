@@ -1,11 +1,8 @@
 package com.example.flink.strategy;
 
-import com.example.flink.*;
-
+import com.example.flink.domain.StrategySignal;
 import com.example.flink.serializer.CandleFlexible;
 import com.example.flink.serializer.IndicatorRowFlexible;
-import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.api.common.functions.MapFunction;
 
 import java.io.Serializable;
 

@@ -1,12 +1,12 @@
 package com.example.flink.strategy;
 
 import com.example.flink.*;
+import com.example.flink.domain.StrategySignal;
 import com.example.flink.serializer.CandleFlexible;
 import com.example.flink.serializer.IndicatorRowFlexible;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.cep.CEP;
-import org.apache.flink.cep.PatternSelectFunction;
 import org.apache.flink.cep.functions.PatternProcessFunction;
 import org.apache.flink.cep.nfa.aftermatch.AfterMatchSkipStrategy;
 import org.apache.flink.cep.pattern.Pattern;
@@ -17,8 +17,6 @@ import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 
 import java.io.Serializable;
-import java.util.List;
-import java.util.Map;
 
 public class CEPCrossoverStrategy implements TradingStrategy, Serializable {
 

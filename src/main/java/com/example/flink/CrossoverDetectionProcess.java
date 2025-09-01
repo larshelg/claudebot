@@ -1,5 +1,6 @@
 package com.example.flink;
 
+import com.example.flink.domain.StrategySignal;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.configuration.Configuration;

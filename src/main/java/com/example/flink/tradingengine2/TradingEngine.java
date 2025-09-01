@@ -67,8 +67,8 @@ public class TradingEngine {
         DataStream<PositionUpdater.RealizedPnlChange> pnlUpdates = processed.getSideOutput(PNL_OUT);
         DataStream<PositionUpdater.TradeMatch> matchUpdates       = processed.getSideOutput(MATCH_OUT);
 
-        var tEnv = StreamTableEnvironment.create(env);
-        FlussTableBridge.attach(tEnv, lotsUpdates, rollupUpdates, pnlUpdates);
+       // var tEnv = StreamTableEnvironment.create(env);
+        //FlussTableBridge.attach(tEnv, lotsUpdates, rollupUpdates, pnlUpdates);
 
 
         lotsUpdates.sinkTo(positionLotChangeSink);
