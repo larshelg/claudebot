@@ -1,6 +1,6 @@
 package com.example.flink.indicator;
 
-import com.example.flink.Candle;
+import com.example.flink.domain.Candle;
 import com.example.flink.IndicatorRow;
 import com.example.flink.SimpleMovingAverage;
 import org.apache.flink.api.common.state.ValueState;

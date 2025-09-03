@@ -6,7 +6,7 @@ import com.alibaba.fluss.flink.source.FlussSource;
 import com.alibaba.fluss.flink.source.enumerator.initializer.OffsetsInitializer;
 import com.alibaba.fluss.flink.source.deserializer.RowDataDeserializationSchema;
 
-import com.example.flink.Candle;
+import com.example.flink.domain.Candle;
 import com.example.flink.IndicatorRow;
 import com.example.flink.indicator.MultiIndicatorProcess;
 import org.apache.flink.streaming.api.datastream.DataStream;

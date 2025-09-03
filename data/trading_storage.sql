@@ -9,6 +9,25 @@ USE CATALOG fluss_catalog;
 -- APPEND-ONLY HISTORY
 -- =====================
 
+CREATE TABLE fluss.trendsummary10 (
+  symbol STRING,
+  ts TIMESTAMP(3),
+  alpha DOUBLE,
+  confidence DOUBLE,
+  phase STRING,
+  direction STRING,
+  breakoutDirection STRING,
+  lastBreakoutTs TIMESTAMP(3),
+  breakoutRecency DOUBLE,
+  breakoutStrength DOUBLE,
+  linesUsed INT
+) WITH (
+  'table.datalake.enabled' = 'true',
+  'table.datalake.freshness' = '30s'
+);
+
+
+
 -- Raw execution reports (fills)
 CREATE TABLE IF NOT EXISTS fluss.exec_report_history (
   accountId STRING,
@@ -133,5 +152,10 @@ CREATE TABLE IF NOT EXISTS fluss.portfolio_latest (
   'table.datalake.enabled' = 'true',
   'table.datalake.freshness' = '30s'
 );
+
+
+
+
+
 
 

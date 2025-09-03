@@ -136,6 +136,14 @@
       <scope>test</scope>
     </dependency>
 
+    <!-- Flink JSON format (for JsonDeserializationSchema) -->
+    <dependency>
+      <groupId>org.apache.flink</groupId>
+      <artifactId>flink-json</artifactId>
+      <version>${flink.version}</version>
+      <scope>test</scope>
+    </dependency>
+
   </dependencies>
 
   <build>

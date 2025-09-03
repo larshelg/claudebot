@@ -8,10 +8,11 @@ set -e
 # Hardcoded job definitions from jobs folder
 job_classes=(
     "com.example.flink.jobs.CrossoverStrategyJob"
-    "com.example.flink.jobs.TradingEngineJob" 
+    "com.example.flink.jobs.TradingEngineJob"
     "com.example.flink.jobs.LocalExecutionJob"
     "com.example.flink.jobs.StrategyChooserClusterJob"
     "com.example.flink.jobs.MultiIndicatorWithFlussJob"
+    "com.example.flink.jobs.LineJob"
 )
 
 job_descriptions=(
@@ -20,6 +21,7 @@ job_descriptions=(
     "Local Execution - Local order execution simulation"
     "Strategy Chooser - Multi-strategy signal generation"
     "Multi Indicator - Technical indicators with Fluss integration"
+    "LineJob"
 )
 
 # Display available jobs
@@ -61,7 +63,7 @@ fi
 if [[ "$build_choice" =~ ^[Yy] ]]; then
     echo "🔨 Building the project..."
     mvn clean package -DskipTests
-    
+
     if [[ $? -ne 0 ]]; then
         echo "❌ Build failed!"
         exit 1
@@ -69,7 +71,7 @@ if [[ "$build_choice" =~ ^[Yy] ]]; then
     echo "✅ Build completed successfully!"
 else
     echo "⏭️  Skipping build step..."
-    
+
     # Check if JAR exists
     if [[ ! -f "../target/flink-cep-strategy-1.0-SNAPSHOT.jar" ]]; then
         echo "❌ JAR file not found: ../target/flink-cep-strategy-1.0-SNAPSHOT.jar"

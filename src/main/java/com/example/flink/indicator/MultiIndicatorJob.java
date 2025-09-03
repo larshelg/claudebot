@@ -1,6 +1,6 @@
 package com.example.flink.indicator;
 
-import com.example.flink.Candle;
+import com.example.flink.domain.Candle;
 import com.example.flink.IndicatorRow;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -10,7 +10,7 @@ import java.util.Random;
 
 /**
  * Simple main class to run the MultiIndicatorProcess locally for testing.
- * 
+ *
  * This creates a sample stream of candle data and processes it through
  * the multi-indicator pipeline to compute SMA, EMA, and RSI values.
  */

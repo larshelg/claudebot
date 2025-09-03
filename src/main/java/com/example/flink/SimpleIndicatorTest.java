@@ -1,5 +1,6 @@
 package com.example.flink;
 
+import com.example.flink.domain.Candle;
 import com.example.flink.indicator.IntegratedIndicatorState;
 import com.example.flink.indicator.MultiIndicatorProcess;
 
